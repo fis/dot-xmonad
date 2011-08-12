@@ -7,12 +7,17 @@ import qualified XMonad.StackSet as W
 import XMonad.Util.Run(spawnPipe)
 import XMonad.Util.EZConfig(additionalKeys)
 
-import Control.Applicative
+import Data.Maybe
+import qualified Data.Text as T
 import System.IO
 import System.Process
 
+import qualified DBus.Address as DBA
+import qualified DBus.Client.Simple as DBC
+import qualified DBus.Types as DBT
+
 myModm = mod4Mask
-myTerminal = "urxvtc"
+myTerminal = "urxvt"
 myDzen = "/home/htkallas/local/bin/dzen2"
 
 myScreens = [(1280,1024), (1600,1200)]
@@ -30,32 +35,24 @@ myKeys =
   ]
 
 main = do
-  (toDzen0, fromDzen0) <- myRunDzen 0
-  (toDzen1, fromDzen1) <- myRunDzen 1
+  -- open the DBus connection for status updates
+  dbus <- DBC.connectSession
+  -- start XMonad
   xmonad $ gnomeConfig {
     workspaces = withScreens (S $ length myScreens) myWorkspaces,
     modMask = myModm,
     terminal = myTerminal,
-    logHook = do
-      dynamicLogWithPP dzenPP {
-        ppOutput = \s -> sequence_ $ [hPutStrLn toDzen0, hPutStrLn toDzen1] <*> [s]
-        }
-        logHook gnomeConfig
+    logHook = myDBusLogHook dbus >> logHook gnomeConfig
     }
     `additionalKeys` myKeys
 
--- dzen spawning for different screens
+-- dbus status update code
 
-myRunDzen :: Int -> IO (Handle, Handle)
-myRunDzen s = do
-  (inp, out, err, pid) <- runInteractiveProcess myDzen args Nothing Nothing
-  hSetBuffering inp LineBuffering
-  hSetBuffering out LineBuffering
-  return (inp, out)
+myDBusLogHook :: DBC.Client -> X ()
+myDBusLogHook c = do
+  status <- dynamicLogString defaultPP
+  io $ DBC.emit c path ifc mem [DBT.toVariant status]
   where
-    args :: [String]
-    args = ["-ta", "l", "-p", "-x", xpos, "-y", "0", "-h", "16", "-w", width]
-    xpos :: String
-    xpos = show . sum $ fst `map` take s myScreens
-    width :: String
-    width = show . fst $ myScreens !! s
+    path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
+    ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"
+    mem = DBT.memberName_ $ T.pack "StatusUpdate"
