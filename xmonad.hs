@@ -50,9 +50,18 @@ main = do
 
 myDBusLogHook :: DBC.Client -> X ()
 myDBusLogHook c = do
-  status <- dynamicLogString defaultPP
+  status <- dynamicLogString dbusPP
   io $ DBC.emit c path ifc mem [DBT.toVariant status]
   where
     path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
     ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"
     mem = DBT.memberName_ $ T.pack "StatusUpdate"
+    dbusPP = defaultPP {
+      ppCurrent = (++"/c"),
+      ppVisible = (++"/v"),
+      ppHidden = (++"/h"),
+      ppHiddenNoWindows = (++"/e"),
+      ppUrgent = (++"/u"),
+      ppSep = ";", ppWsSep = ",",
+      ppTitle = id, ppLayout = id
+      }

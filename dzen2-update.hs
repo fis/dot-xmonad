@@ -25,27 +25,31 @@ myDzen2 = "/usr/bin/dzen2"
 
 -- main application
 
+data Event = StatusUpdate String
+           | DzenActivity Int String
+           deriving Show
+
 main :: IO ()
 main = do
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
   dzenHandles <- mapM startDzen2 myScreens
-  mapM_ (readDzen2 eventChan) dzenHandles
+  mapM_ (readDzen2 eventChan) $ zip [0..] dzenHandles
   -- set up DBus listener to feed the event channel
   dbusSetupListener eventChan
   -- handle events until the end
   handleEvents eventChan dzenHandles
   where
-    handleEvents :: Chan String -> [(Handle, Handle)] -> IO ()
+    handleEvents :: Chan Event -> [(Handle, Handle)] -> IO ()
     handleEvents chan dzen = do
       event <- readChan chan
       handle event
       handleEvents chan dzen
       where
-        handle :: String -> IO ()
+        handle :: Event -> IO ()
         -- just for testing:
-        handle = hPutStrLn (fst (dzen !! 0))
+        handle (StatusUpdate msg) = hPutStrLn (fst (dzen !! 0)) msg
 
 -- dzen2 process handling code
 
@@ -60,17 +64,17 @@ startDzen2 ((xpos,ypos), (width,_)) = do
     args :: [String]
     args = ["-ta", "l", "-x", show xpos, "-y", show ypos, "-w", show width, "-h", "16"]
 
-readDzen2 :: Chan String -> (Handle, Handle) -> IO ()
-readDzen2 eventChan (_, h) = do _ <- forkIO $ forever read; return ()
+readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
+readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
   where
     read :: IO ()
     read = do
       msg <- hGetLine h
-      writeChan eventChan msg
+      writeChan eventChan $ DzenActivity n msg
 
 -- dbus event listening code
 
-dbusSetupListener :: Chan String -> IO ()
+dbusSetupListener :: Chan Event -> IO ()
 dbusSetupListener eventChan = do
   addr <- DBA.getSession
   dbus <- DBC.connect $ head . fromJust $ addr
@@ -89,4 +93,4 @@ dbusSetupListener eventChan = do
     getMemberName :: DBM.Signal -> String
     getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
     handle :: String -> [DBT.Variant] -> IO ()
-    handle "StatusUpdate" body = writeChan eventChan $ show body
+    handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
