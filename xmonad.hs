@@ -51,6 +51,8 @@ main = do
 myRunDzen :: Int -> IO (Handle, Handle)
 myRunDzen s = do
     (inp, out, err, pid) <- runInteractiveProcess myDzen args Nothing Nothing
+    hSetBuffering inp LineBuffering
+    hSetBuffering out LineBuffering
     return (inp, out)
   where
     args :: [String]
