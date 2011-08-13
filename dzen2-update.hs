@@ -99,14 +99,15 @@ screenCount = length myScreens
 
 parseUpdate :: String -> BarState -> BarState
 parseUpdate str oldState =
-  let [wsstr, _, title] = splitOn ";" str
+  let (wsstr:(_:title)) = splitOn ";" str
       allWorkspaces = parseWorkspaces wsstr
       newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
-      newWorkspaces = map (getWorkspaces allWorkspaces) [0..(screenCount-1)] in
+      newWorkspaces = map (getWorkspaces allWorkspaces) [0..(screenCount-1)]
+      newTitle = if title == [] then "" else head title in
   oldState {
     barActiveScreen = newActiveScreen,
     barWorkspaces = newWorkspaces,
-    barTitles = insertTitle newActiveScreen title $ barTitles oldState
+    barTitles = insertTitle newActiveScreen newTitle $ barTitles oldState
     }
   where
     getWorkspaces :: [(Int, WS)] -> Int -> [WS]
