@@ -1,9 +1,15 @@
+import Control.Applicative
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Trans.State
 import Data.Ix
+import Data.List
+import Data.List.Split
 import Data.Maybe
 import System.IO
 import System.Process
+import Text.Regex.Posix
 
 import qualified Data.Text as T
 
@@ -29,6 +35,27 @@ data Event = StatusUpdate String
            | DzenActivity Int String
            deriving Show
 
+data WSType = WSCurrent | WSVisible | WSHidden | WSEmpty
+              deriving (Eq, Ord, Show)
+data WS = WS String WSType Bool
+          deriving Show
+
+wsName :: WS -> String
+wsName (WS name _ _) = name
+wsType :: WS -> WSType
+wsType (WS _ wstype _) = wstype
+wsUrgent :: WS -> Bool
+wsUrgent (WS _ _ urg) = urg
+
+data BarState = BarState {
+  barActiveScreen :: Int,
+  barWorkspaces :: [[WS]],
+  barTitles :: [String]
+  }
+  deriving Show
+
+type BarIO = StateT BarState IO
+
 main :: IO ()
 main = do
   -- set up a channel for event-receiving
@@ -39,17 +66,82 @@ main = do
   -- set up DBus listener to feed the event channel
   dbusSetupListener eventChan
   -- handle events until the end
-  handleEvents eventChan dzenHandles
+  evalStateT (forever $ handleEvents eventChan dzenHandles) initState
   where
-    handleEvents :: Chan Event -> [(Handle, Handle)] -> IO ()
-    handleEvents chan dzen = do
-      event <- readChan chan
-      handle event
-      handleEvents chan dzen
-      where
-        handle :: Event -> IO ()
-        -- just for testing:
-        handle (StatusUpdate msg) = hPutStrLn (fst (dzen !! 0)) msg
+    initState :: BarState
+    initState = BarState {
+      barActiveScreen = 0,
+      barWorkspaces = replicate screenCount [],
+      barTitles = replicate screenCount "(dzen2)"
+      }
+
+handleEvents :: Chan Event -> [(Handle, Handle)] -> BarIO ()
+handleEvents chan dzen = do
+  event <- liftIO $ readChan chan
+  handle event
+  where
+    handle :: Event -> BarIO ()
+    handle (StatusUpdate msg) = do
+      -- update current state
+      oldState <- get
+      let newState = parseUpdate msg oldState
+      put newState
+      -- redraw necessary dzen toolbars
+      let toUpdate = nub $ barActiveScreen <$> [oldState, newState]
+      mapM_ update toUpdate
+    update :: Int -> BarIO ()
+    update idx = do
+      state <- get
+      liftIO $ hPutStrLn (fst (dzen !! idx)) $ makeBar state idx
+
+screenCount :: Int
+screenCount = length myScreens
+
+parseUpdate :: String -> BarState -> BarState
+parseUpdate str oldState =
+  let [wsstr, _, title] = splitOn ";" str
+      allWorkspaces = parseWorkspaces wsstr
+      newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
+      newWorkspaces = map (getWorkspaces allWorkspaces) [0..(screenCount-1)] in
+  oldState {
+    barActiveScreen = newActiveScreen,
+    barWorkspaces = newWorkspaces,
+    barTitles = insertTitle newActiveScreen title $ barTitles oldState
+    }
+  where
+    getWorkspaces :: [(Int, WS)] -> Int -> [WS]
+    getWorkspaces wslist screen =
+      map snd $ filter ((== screen) . fst) wslist
+    parseWorkspaces :: String -> [(Int, WS)]
+    parseWorkspaces = map parseWorkspace . splitOn ","
+    parseWorkspace :: String -> (Int, WS)
+    parseWorkspace str =
+      let (_, _, _, [scr, name, wtype, urg]) = str =~ "^([0-9]+)_([^/]*)/([cvhe])(/u)?" :: (String, String, String, [String]) in
+      (read scr :: Int, WS name (parseWSType wtype) (urg /= ""))
+    parseWSType :: String -> WSType
+    parseWSType "c" = WSCurrent
+    parseWSType "v" = WSVisible
+    parseWSType "h" = WSHidden
+    parseWSType "e" = WSEmpty
+    insertTitle :: Int -> String -> [String] -> [String]
+    insertTitle at title old =
+      let (before, (_:after)) = splitAt at old in
+      before ++ (title:after)
+
+-- status line formatting code
+
+makeBar :: BarState -> Int -> String
+makeBar state idx = workspaces ++ " - " ++ title
+  where
+    workspaces :: String
+    workspaces = intercalate " " $ map makeWS $ barWorkspaces state !! idx
+    title :: String
+    title = barTitles state !! idx
+    makeWS :: WS -> String
+    makeWS (WS name WSCurrent _) = "*" ++ name
+    makeWS (WS name WSVisible _) = "*" ++ name
+    makeWS (WS name WSHidden _) = name
+    makeWS (WS name WSEmpty _) = name
 
 -- dzen2 process handling code
 
