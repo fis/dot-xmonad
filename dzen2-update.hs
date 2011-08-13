@@ -11,6 +11,9 @@ import System.IO
 import System.Process
 import Text.Regex.Posix
 
+import Data.Map (Map)
+import qualified Data.Map as Map
+
 import qualified Data.Text as T
 
 import qualified DBus.Address as DBA
@@ -28,6 +31,21 @@ myScreens = [
   ]
 
 myDzen2 = "/usr/bin/dzen2"
+
+myColors = Map.fromList [
+  ("default", ("#808080", "#202020")),
+  ("ws-visible", ("#d0d0d0", "#606060")),
+  ("ws-hidden", ("#909090", "#202020")),
+  ("ws-urgent", ("#ffffff", "#700000"))
+  ]
+
+-- trivial helpers to access the configuration
+
+screenCount :: Int
+screenCount = length myScreens
+
+color :: String -> (String, String)
+color c = Map.findWithDefault ("#ffffff", "#ff0000") c myColors
 
 -- main application
 
@@ -94,9 +112,6 @@ handleEvents chan dzen = do
       state <- get
       liftIO $ hPutStrLn (fst (dzen !! idx)) $ makeBar state idx
 
-screenCount :: Int
-screenCount = length myScreens
-
 parseUpdate :: String -> BarState -> BarState
 parseUpdate str oldState =
   let (wsstr:(_:title)) = splitOn ";" str
@@ -139,10 +154,25 @@ makeBar state idx = workspaces ++ " - " ++ title
     title :: String
     title = barTitles state !! idx
     makeWS :: WS -> String
-    makeWS (WS name WSCurrent _) = "*" ++ name
-    makeWS (WS name WSVisible _) = "*" ++ name
-    makeWS (WS name WSHidden _) = name
-    makeWS (WS name WSEmpty _) = name
+    makeWS (WS name wtype urg) =
+      makeName wtype urg $ makeIcon wtype ++ name
+    makeIcon :: WSType -> String
+    makeIcon WSEmpty = "^ro(6x6)^p(+2)"
+    makeIcon _       = "^r(6x6)^p(+2)"
+    makeName :: WSType -> Bool -> String -> String
+    makeName _         True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
+    makeName WSCurrent _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
+    makeName WSVisible _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
+    makeName WSHidden  _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
+    makeName WSEmpty   _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
+
+dzen2Color :: (String, String) -> String -> String
+dzen2Color (fg, bg) str =
+  "^fg(" ++ fg ++ ")^bg(" ++ bg ++ ")" ++ str ++ "^fg()^bg()"
+
+dzen2Gap :: (Int, Int) -> String -> String
+dzen2Gap (front, back) str =
+  "^p(+" ++ show front ++ ")" ++ str ++ "^p(+" ++ show back ++ ")"
 
 -- dzen2 process handling code
 
@@ -155,7 +185,12 @@ startDzen2 ((xpos,ypos), (width,_)) = do
   return (inp, out)
   where
     args :: [String]
-    args = ["-ta", "l", "-x", show xpos, "-y", show ypos, "-w", show width, "-h", "16"]
+    args =
+      let (fg, bg) = color "default" in
+      ["-ta", "l",
+       "-x", show xpos, "-y", show ypos, "-w", show width,
+       "-fg", fg, "-bg", bg
+      ]
 
 readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
 readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
