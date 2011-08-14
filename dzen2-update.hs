@@ -189,7 +189,8 @@ startDzen2 ((xpos,ypos), (width,_)) = do
       let (fg, bg) = color "default" in
       ["-ta", "l",
        "-x", show xpos, "-y", show ypos, "-w", show width,
-       "-fg", fg, "-bg", bg
+       "-fg", fg, "-bg", bg,
+       "-fn", "-*-terminal-*-r-*-*-14-*-*-*-*-*-*-*"
       ]
 
 readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
