@@ -22,7 +22,6 @@ import qualified DBus.Types as DBT
 
 myModm = mod4Mask
 myTerminal = "urxvt"
-myDzen = "/home/htkallas/local/bin/dzen2"
 
 myScreens = [(1280,1024), (1600,1200)]
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
