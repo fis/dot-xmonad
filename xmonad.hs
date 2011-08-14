@@ -4,7 +4,7 @@ import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.UrgencyHook
---import qualified XMonad.Layout.HintedTile as HT
+import qualified XMonad.Layout.HintedTile as HT
 import XMonad.Layout.IndependentScreens
 import XMonad.Layout.LayoutHints
 import qualified XMonad.StackSet as W
@@ -38,17 +38,12 @@ myKeys =
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myLayouts = desktopLayoutModifiers $ layoutHints (Tall 1 (3/100) (1/2) ||| Mirror (Tall 1 (3/100) (1/2)) ||| Full)
-
--- doesn't seem to work, due to having just instance LayoutClass HT.HintedTile Window,
--- instead of an instance LayoutClass HT.HintedTile a.
-
---myLayouts = hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full
---  where
---    hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
---    nmaster    = 1
---    ratio      = 1/2
---    delta      = 3/100
+myLayouts = desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full
+  where
+    hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
+    nmaster    = 1
+    ratio      = 1/2
+    delta      = 3/100
 
 main = do
   -- open the DBus connection for status updates
