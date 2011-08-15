@@ -36,7 +36,8 @@ myColors = Map.fromList [
   ("default", ("#808080", "#202020")),
   ("ws-visible", ("#d0d0d0", "#606060")),
   ("ws-hidden", ("#909090", "#202020")),
-  ("ws-urgent", ("#ffffff", "#700000"))
+  ("ws-urgent", ("#ffffff", "#700000")),
+  ("title", ("#d0d0d0", "#202020"))
   ]
 
 -- trivial helpers to access the configuration
@@ -152,7 +153,7 @@ makeBar state idx = workspaces ++ " - " ++ title
     workspaces :: String
     workspaces = intercalate " " $ map makeWS $ barWorkspaces state !! idx
     title :: String
-    title = barTitles state !! idx
+    title = dzen2Color (color "title") $ barTitles state !! idx
     makeWS :: WS -> String
     makeWS (WS name wtype urg) =
       makeName wtype urg $ makeIcon wtype ++ name
