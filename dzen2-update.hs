@@ -158,8 +158,8 @@ makeBar state idx = workspaces ++ " - " ++ title
     makeWS (WS name wtype urg) =
       makeName wtype urg $ makeIcon wtype ++ name
     makeIcon :: WSType -> String
-    makeIcon WSEmpty = "^ro(6x6)^p(+2)"
-    makeIcon _       = "^r(6x6)^p(+2)"
+    makeIcon WSEmpty = "^ro(6x6)^r(2x0)"
+    makeIcon _       = "^r(6x6)^r(2x0)"
     makeName :: WSType -> Bool -> String -> String
     makeName _         True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
     makeName WSCurrent _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
@@ -173,7 +173,7 @@ dzen2Color (fg, bg) str =
 
 dzen2Gap :: (Int, Int) -> String -> String
 dzen2Gap (front, back) str =
-  "^p(+" ++ show front ++ ")" ++ str ++ "^p(+" ++ show back ++ ")"
+  "^r(+" ++ show front ++ "x0)" ++ str ++ "^r(+" ++ show back ++ "x0)"
 
 -- dzen2 process handling code
 
@@ -191,7 +191,7 @@ startDzen2 ((xpos,ypos), (width,_)) = do
       ["-ta", "l",
        "-x", show xpos, "-y", show ypos, "-w", show width,
        "-fg", fg, "-bg", bg,
-       "-fn", "-*-terminal-*-r-*-*-14-*-*-*-*-*-*-*"
+       "-fn", "DejaVu Sans:size=10"
       ]
 
 readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
