@@ -68,6 +68,7 @@ data BarState = BarState {
   barScreenCount :: Int,
   barActiveScreen :: Int,
   barWorkspaces :: [[WS]],
+  barLayouts :: [String],
   barTitles :: [String]
   }
   deriving Show
@@ -93,6 +94,7 @@ main = do
       barScreenCount = length screens,
       barActiveScreen = 0,
       barWorkspaces = [] <$ screens,
+      barLayouts = "Tall" <$ screens,
       barTitles = "(dzen2)" <$ screens
       }
 
@@ -117,7 +119,7 @@ handleEvents chan dzen = do
 
 parseUpdate :: String -> BarState -> BarState
 parseUpdate str oldState =
-  let (wsstr:(_:title)) = splitOn ";" str
+  let (wsstr:(layout:title)) = splitOn ";" str
       screenList = [0..((barScreenCount oldState) - 1)]
       allWorkspaces = parseWorkspaces wsstr
       newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
@@ -126,7 +128,8 @@ parseUpdate str oldState =
   oldState {
     barActiveScreen = newActiveScreen,
     barWorkspaces = newWorkspaces,
-    barTitles = insertTitle newActiveScreen newTitle $ barTitles oldState
+    barLayouts = insertTo newActiveScreen layout $ barLayouts oldState,
+    barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
     }
   where
     getWorkspaces :: [(Int, WS)] -> Int -> [WS]
@@ -143,22 +146,24 @@ parseUpdate str oldState =
     parseWSType "v" = WSVisible
     parseWSType "h" = WSHidden
     parseWSType "e" = WSEmpty
-    insertTitle :: Int -> String -> [String] -> [String]
-    insertTitle at title old =
+    insertTo :: Int -> a -> [a] -> [a]
+    insertTo at title old =
       let (before, (_:after)) = splitAt at old in
       before ++ (title:after)
 
 -- status line formatting code
 
 makeBar :: BarState -> Int -> String
-makeBar state idx = workspaces ++ sep ++ title
+makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
   where
     workspaces :: String
     workspaces = intercalate " " $ map makeWS $ barWorkspaces state !! idx
-    sep :: String
-    sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
+    layout :: String
+    layout = dzen2LayoutIcon $ barLayouts state !! idx
     title :: String
     title = dzen2Color (color "title") $ barTitles state !! idx
+    sep :: String
+    sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
     makeWS :: WS -> String
     makeWS (WS name wtype urg) =
       makeName wtype urg $ makeIcon wtype ++ name
@@ -179,6 +184,13 @@ dzen2Color (fg, bg) str =
 dzen2Gap :: (Int, Int) -> String -> String
 dzen2Gap (front, back) str =
   "^r(+" ++ show front ++ "x0)" ++ str ++ "^r(+" ++ show back ++ "x0)"
+
+dzen2LayoutIcon :: String -> String
+-- dzen2LayoutIcon "Tall" = "^ro(6x12)^p(;+3)^ro(6x6)^p(-6;-6)^ro(6x6)^p()"
+dzen2LayoutIcon "Tall" = "◧"
+dzen2LayoutIcon "Wide" = "⬒"
+dzen2LayoutIcon "Full" = "^ro(12x12)"
+dzen2LayoutIcon str = str
 
 -- dzen2 process handling code
 
