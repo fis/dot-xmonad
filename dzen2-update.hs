@@ -104,6 +104,7 @@ handleEvents chan dzen = do
   handle event
   where
     handle :: Event -> BarIO ()
+    -- status updates from xmonad
     handle (StatusUpdate msg) = do
       -- update current state
       oldState <- get
@@ -112,6 +113,10 @@ handleEvents chan dzen = do
       -- redraw necessary dzen toolbars
       let toUpdate = nub $ barActiveScreen <$> [oldState, newState]
       mapM_ update toUpdate
+    -- click events from dzen
+    handle (DzenActivity screen event) = do
+      liftIO $ putStrLn $ "screen " ++ show screen ++ " event " ++ event
+    -- function to update some statusbars
     update :: Int -> BarIO ()
     update idx = do
       state <- get
@@ -157,16 +162,16 @@ makeBar :: BarState -> Int -> String
 makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
   where
     workspaces :: String
-    workspaces = intercalate " " $ map makeWS $ barWorkspaces state !! idx
+    workspaces = intercalate " " $ map makeWS $ zip [0..] $ barWorkspaces state !! idx
     layout :: String
     layout = dzen2LayoutIcon $ barLayouts state !! idx
     title :: String
     title = dzen2Color (color "title") $ barTitles state !! idx
     sep :: String
     sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
-    makeWS :: WS -> String
-    makeWS (WS name wtype urg) =
-      makeName wtype urg $ makeIcon wtype ++ name
+    makeWS :: (Int, WS) -> String
+    makeWS (idx, WS name wtype urg) =
+      dzen2Clickable ("ws" ++ show idx) $ makeName wtype urg $ makeIcon wtype ++ name
     makeIcon :: WSType -> String
     makeIcon WSEmpty = "^ro(6x6)^r(2x0)"
     makeIcon _       = "^r(6x6)^r(2x0)"
@@ -185,8 +190,11 @@ dzen2Gap :: (Int, Int) -> String -> String
 dzen2Gap (front, back) str =
   "^r(+" ++ show front ++ "x0)" ++ str ++ "^r(+" ++ show back ++ "x0)"
 
+dzen2Clickable :: String -> String -> String
+dzen2Clickable name str =
+  "^ca(1, echo m1" ++ name ++ ")" ++ str ++ "^ca()"
+
 dzen2LayoutIcon :: String -> String
--- dzen2LayoutIcon "Tall" = "^ro(6x12)^p(;+3)^ro(6x6)^p(-6;-6)^ro(6x6)^p()"
 dzen2LayoutIcon "Tall" = "◧"
 dzen2LayoutIcon "Wide" = "⬒"
 dzen2LayoutIcon "Full" = "^ro(12x12)"
