@@ -3,6 +3,7 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State
+import Data.Function
 import Data.Ix
 import Data.List
 import Data.List.Split
@@ -233,7 +234,7 @@ xrandrQuery = do
   raw <- readProcess "xrandr" ["-q"] ""
   filtered <- readProcess "perl" ["-ne", perlcode] raw
   let parsed = read filtered :: [((Int,Int),(Int,Int))]
-  return $ sortBy (\a b -> compare (fst (fst a)) (fst (fst b))) parsed
+  return $ sortBy (compare `on` fst . fst) parsed
   where
     perlcode :: String
     perlcode =
