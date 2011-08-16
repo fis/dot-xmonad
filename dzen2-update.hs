@@ -40,6 +40,9 @@ myColors = Map.fromList [
   ("title", ("#d0d0d0", "#202020"))
   ]
 
+myFont = "DejaVu Sans:size=10"
+myBarHeight = 20
+
 -- trivial helpers to access the configuration
 
 screenCount :: Int
@@ -148,10 +151,12 @@ parseUpdate str oldState =
 -- status line formatting code
 
 makeBar :: BarState -> Int -> String
-makeBar state idx = workspaces ++ " - " ++ title
+makeBar state idx = workspaces ++ sep ++ title
   where
     workspaces :: String
     workspaces = intercalate " " $ map makeWS $ barWorkspaces state !! idx
+    sep :: String
+    sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
     title :: String
     title = dzen2Color (color "title") $ barTitles state !! idx
     makeWS :: WS -> String
@@ -189,9 +194,9 @@ startDzen2 ((xpos,ypos), (width,_)) = do
     args =
       let (fg, bg) = color "default" in
       ["-ta", "l",
-       "-x", show xpos, "-y", show ypos, "-w", show width,
+       "-x", show xpos, "-y", show ypos, "-w", show width, "-h", show myBarHeight,
        "-fg", fg, "-bg", bg,
-       "-fn", "DejaVu Sans:size=10"
+       "-fn", myFont
       ]
 
 readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
