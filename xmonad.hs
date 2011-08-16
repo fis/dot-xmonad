@@ -23,7 +23,6 @@ import qualified DBus.Types as DBT
 myModm = mod4Mask
 myTerminal = "urxvt"
 
-myScreens = [(1280,1024), (1600,1200)]
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
 
 myKeys =
@@ -48,8 +47,9 @@ main = do
   -- open the DBus connection for status updates
   dbus <- DBC.connectSession
   -- start XMonad
+  nScreens <- countScreens
   xmonad $ withUrgencyHook NoUrgencyHook $ gnomeConfig {
-    workspaces = withScreens (S $ length myScreens) myWorkspaces,
+    workspaces = withScreens nScreens myWorkspaces,
     modMask = myModm,
     terminal = myTerminal,
     logHook = myDBusLogHook dbus >> logHook gnomeConfig,
