@@ -38,6 +38,9 @@ myColors = Map.fromList [
 myFont = "DejaVu Sans:size=10"
 myBarHeight = 20
 
+myScreens :: Maybe [((Int,Int),(Int,Int))]
+myScreens = Nothing -- will use "xrandr -q" to find out
+
 -- trivial helpers to access the configuration
 
 color :: String -> (String, String)
@@ -74,7 +77,8 @@ type BarIO = StateT BarState IO
 main :: IO ()
 main = do
   -- extract list of connected screens
-  screens <- xrandrQuery
+  xrandrScreens <- xrandrQuery
+  let screens = fromMaybe xrandrScreens myScreens
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
