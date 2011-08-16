@@ -11,7 +11,9 @@ import qualified XMonad.StackSet as W
 import XMonad.Util.Run(spawnPipe)
 import XMonad.Util.EZConfig(additionalKeys)
 
+import Control.Monad (when)
 import Data.Maybe
+import Data.Monoid
 import qualified Data.Text as T
 import System.IO
 import System.Process
@@ -52,8 +54,9 @@ main = do
     workspaces = withScreens nScreens myWorkspaces,
     modMask = myModm,
     terminal = myTerminal,
+    layoutHook = myLayouts,
     logHook = myDBusLogHook dbus >> logHook gnomeConfig,
-    layoutHook = myLayouts
+    handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
     }
     `additionalKeys` myKeys
 
@@ -76,3 +79,17 @@ myDBusLogHook c = do
       ppSep = ";", ppWsSep = ",",
       ppTitle = id, ppLayout = id
       }
+
+-- XClientMessageEvent listener for receiving commands back
+
+myClientMessageEventHook :: Event -> X All
+myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt}) = do
+  d <- asks display
+  a <- io $ internAtom d "XMONAD_SWITCH" False
+  when (mt == a && dt /= []) $ do
+    let arg = (fromIntegral (head dt) :: Int)
+        scr = arg `div` 65536
+        ws = arg `mod` 65536
+    windows . W.greedyView . marshall (S scr) $ myWorkspaces !! ws
+  return $ All True
+myClientMessageEventHook _ = return $ All True

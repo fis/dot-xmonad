@@ -3,13 +3,13 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State
+import Data.Array
 import Data.Function
 import Data.Ix
 import Data.List
 import Data.List.Split
 import Data.Maybe
-import Graphics.X11.Xlib
-import Graphics.X11.Xinerama
+import Data.Word
 import System.IO
 import System.Process
 import Text.Regex.Posix
@@ -18,6 +18,10 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import qualified Data.Text as T
+
+import qualified Graphics.X11.Xlib as X
+import qualified Graphics.X11.Xlib.Extras as XE
+import qualified Graphics.X11.Xinerama as XI
 
 import qualified DBus.Address as DBA
 import qualified DBus.Client as DBC
@@ -79,8 +83,10 @@ type BarIO = StateT BarState IO
 
 main :: IO ()
 main = do
+  -- connect to X display for sending events to xmonad
+  dpy <- X.openDisplay ""
   -- extract list of connected screens
-  screens <- maybe xineramaQuery return myScreens
+  screens <- maybe (xineramaQuery dpy) return myScreens
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
@@ -89,7 +95,7 @@ main = do
   -- set up DBus listener to feed the event channel
   dbusSetupListener eventChan
   -- handle events until the end
-  evalStateT (forever $ handleEvents eventChan dzenHandles) $ initState screens
+  evalStateT (forever $ handleEvents eventChan dzenHandles dpy) $ initState screens
   where
     initState :: [((Int,Int),(Int,Int))] -> BarState
     initState screens = BarState {
@@ -100,8 +106,8 @@ main = do
       barTitles = "(dzen2)" <$ screens
       }
 
-handleEvents :: Chan Event -> [(Handle, Handle)] -> BarIO ()
-handleEvents chan dzen = do
+handleEvents :: Chan Event -> [(Handle, Handle)] -> X.Display -> BarIO ()
+handleEvents chan dzen dpy = do
   event <- liftIO $ readChan chan
   handle event
   where
@@ -116,13 +122,31 @@ handleEvents chan dzen = do
       let toUpdate = nub $ barActiveScreen <$> [oldState, newState]
       mapM_ update toUpdate
     -- click events from dzen
-    handle (DzenActivity screen event) = do
-      liftIO $ putStrLn $ "screen " ++ show screen ++ " event " ++ event
+    handle (DzenActivity screen event) =
+      liftIO $ maybe
+        (return ())
+        (handleDzenClick screen)
+        (matchOnceText (makeRegex "^m1ws([0-9]+)" :: Regex) event)
+    -- workspace-switching click events
+    handleDzenClick :: Int -> (String, MatchText String, String) -> IO ()
+    handleDzenClick scr (_, match, _) =
+      let ws = fst . (! 1) $ match in
+      toXMonad "XMONAD_SWITCH" (scr * 65536 + read ws)
     -- function to update some statusbars
     update :: Int -> BarIO ()
     update idx = do
       state <- get
       liftIO $ hPutStrLn (fst (dzen !! idx)) $ makeBar state idx
+    -- function to send stuff to running xmonad
+    toXMonad :: String -> Int -> IO ()
+    toXMonad mtype arg = do
+      rw <- X.rootWindow dpy $ X.defaultScreen dpy
+      a <- X.internAtom dpy mtype False
+      X.allocaXEvent $ \e -> do
+        XE.setEventType e X.clientMessage
+        XE.setClientMessageEvent e rw a 32 (fromIntegral arg) XE.currentTime
+        X.sendEvent dpy rw False X.structureNotifyMask e
+        X.sync dpy False
 
 parseUpdate :: String -> BarState -> BarState
 parseUpdate str oldState =
@@ -254,11 +278,10 @@ dbusSetupListener eventChan = do
 
 -- xinerama screen query
 
-xineramaQuery :: IO [((Int,Int),(Int,Int))]
-xineramaQuery = do
-  dpy <- openDisplay ""
-  map getCoords <$> getScreenInfo dpy
+xineramaQuery :: X.Display -> IO [((Int,Int),(Int,Int))]
+xineramaQuery dpy =
+  map getCoords <$> XI.getScreenInfo dpy
   where
-    getCoords :: Rectangle -> ((Int,Int),(Int,Int))
-    getCoords r = ((fromIntegral $ rect_x r, fromIntegral $ rect_y r),
-                   (fromIntegral $ rect_width r, fromIntegral $ rect_height r))
+    getCoords :: X.Rectangle -> ((Int,Int),(Int,Int))
+    getCoords r = ((fromIntegral $ X.rect_x r, fromIntegral $ X.rect_y r),
+                   (fromIntegral $ X.rect_width r, fromIntegral $ X.rect_height r))
