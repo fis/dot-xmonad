@@ -8,6 +8,8 @@ import Data.Ix
 import Data.List
 import Data.List.Split
 import Data.Maybe
+import Graphics.X11.Xlib
+import Graphics.X11.Xinerama
 import System.IO
 import System.Process
 import Text.Regex.Posix
@@ -39,7 +41,7 @@ myFont = "DejaVu Sans:size=10"
 myBarHeight = 20
 
 myScreens :: Maybe [((Int,Int),(Int,Int))]
-myScreens = Nothing -- will use "xrandr -q" to find out
+myScreens = Nothing -- will use Xinerama to find out
 
 -- trivial helpers to access the configuration
 
@@ -78,7 +80,7 @@ type BarIO = StateT BarState IO
 main :: IO ()
 main = do
   -- extract list of connected screens
-  screens <- maybe xrandrQuery return myScreens
+  screens <- maybe xineramaQuery return myScreens
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
@@ -250,17 +252,13 @@ dbusSetupListener eventChan = do
     handle :: String -> [DBT.Variant] -> IO ()
     handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
 
--- xrandr screen query
+-- xinerama screen query
 
-xrandrQuery :: IO [((Int,Int),(Int,Int))]
-xrandrQuery = do
-  raw <- readProcess "xrandr" ["-q"] ""
-  filtered <- readProcess "perl" ["-ne", perlcode] raw
-  let parsed = read filtered :: [((Int,Int),(Int,Int))]
-  return $ sortBy (compare `on` fst . fst) parsed
+xineramaQuery :: IO [((Int,Int),(Int,Int))]
+xineramaQuery = do
+  dpy <- openDisplay ""
+  map getCoords <$> getScreenInfo dpy
   where
-    perlcode :: String
-    perlcode =
-      "push @a, \"(($3,$4),($1,$2))\"" ++
-      "  if / connected (\\d+)x(\\d+)\\+(\\d+)\\+(\\d+)/; " ++
-      "END { print \"[\".join(\",\",@a).\"]\"; }"
+    getCoords :: Rectangle -> ((Int,Int),(Int,Int))
+    getCoords r = ((fromIntegral $ rect_x r, fromIntegral $ rect_y r),
+                   (fromIntegral $ rect_width r, fromIntegral $ rect_height r))
