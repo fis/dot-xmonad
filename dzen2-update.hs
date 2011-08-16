@@ -22,13 +22,7 @@ import qualified DBus.Constants as DBK
 import qualified DBus.Message as DBM
 import qualified DBus.Types as DBT
 
--- screen configuration (TODO: dynamic?)
-
-myScreens :: [((Int,Int),(Int,Int))]
-myScreens = [
-  ((0,0), (1920,1200)),
-  ((1920,0), (1600,1200))
-  ]
+-- configuration
 
 myDzen2 = "/usr/bin/dzen2"
 
@@ -44,9 +38,6 @@ myFont = "DejaVu Sans:size=10"
 myBarHeight = 20
 
 -- trivial helpers to access the configuration
-
-screenCount :: Int
-screenCount = length myScreens
 
 color :: String -> (String, String)
 color c = Map.findWithDefault ("#ffffff", "#ff0000") c myColors
@@ -70,6 +61,7 @@ wsUrgent :: WS -> Bool
 wsUrgent (WS _ _ urg) = urg
 
 data BarState = BarState {
+  barScreenCount :: Int,
   barActiveScreen :: Int,
   barWorkspaces :: [[WS]],
   barTitles :: [String]
@@ -80,21 +72,24 @@ type BarIO = StateT BarState IO
 
 main :: IO ()
 main = do
+  -- extract list of connected screens
+  screens <- xrandrQuery
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
-  dzenHandles <- mapM startDzen2 myScreens
+  dzenHandles <- mapM startDzen2 screens
   mapM_ (readDzen2 eventChan) $ zip [0..] dzenHandles
   -- set up DBus listener to feed the event channel
   dbusSetupListener eventChan
   -- handle events until the end
-  evalStateT (forever $ handleEvents eventChan dzenHandles) initState
+  evalStateT (forever $ handleEvents eventChan dzenHandles) $ initState screens
   where
-    initState :: BarState
-    initState = BarState {
+    initState :: [((Int,Int),(Int,Int))] -> BarState
+    initState screens = BarState {
+      barScreenCount = length screens,
       barActiveScreen = 0,
-      barWorkspaces = replicate screenCount [],
-      barTitles = replicate screenCount "(dzen2)"
+      barWorkspaces = [] <$ screens,
+      barTitles = "(dzen2)" <$ screens
       }
 
 handleEvents :: Chan Event -> [(Handle, Handle)] -> BarIO ()
@@ -119,9 +114,10 @@ handleEvents chan dzen = do
 parseUpdate :: String -> BarState -> BarState
 parseUpdate str oldState =
   let (wsstr:(_:title)) = splitOn ";" str
+      screenList = [0..((barScreenCount oldState) - 1)]
       allWorkspaces = parseWorkspaces wsstr
       newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
-      newWorkspaces = map (getWorkspaces allWorkspaces) [0..(screenCount-1)]
+      newWorkspaces = map (getWorkspaces allWorkspaces) screenList
       newTitle = if title == [] then "" else head title in
   oldState {
     barActiveScreen = newActiveScreen,
@@ -229,3 +225,18 @@ dbusSetupListener eventChan = do
     getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
     handle :: String -> [DBT.Variant] -> IO ()
     handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
+
+-- xrandr screen query
+
+xrandrQuery :: IO [((Int,Int),(Int,Int))]
+xrandrQuery = do
+  raw <- readProcess "xrandr" ["-q"] ""
+  filtered <- readProcess "perl" ["-ne", perlcode] raw
+  let parsed = read filtered :: [((Int,Int),(Int,Int))]
+  return $ sortBy (\a b -> compare (fst (fst a)) (fst (fst b))) parsed
+  where
+    perlcode :: String
+    perlcode =
+      "push @a, \"(($3,$4),($1,$2))\"" ++
+      "  if / connected (\\d+)x(\\d+)\\+(\\d+)\\+(\\d+)/; " ++
+      "END { print \"[\".join(\",\",@a).\"]\"; }"
