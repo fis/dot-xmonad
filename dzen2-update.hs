@@ -77,8 +77,7 @@ type BarIO = StateT BarState IO
 main :: IO ()
 main = do
   -- extract list of connected screens
-  xrandrScreens <- xrandrQuery
-  let screens = fromMaybe xrandrScreens myScreens
+  screens <- maybe xrandrQuery return myScreens
   -- set up a channel for event-receiving
   eventChan <- newChan
   -- start a dzen2 process for each screen, fork a thread to get events
