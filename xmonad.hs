@@ -55,7 +55,7 @@ main = do
     modMask = myModm,
     terminal = myTerminal,
     layoutHook = myLayouts,
-    logHook = myDBusLogHook dbus >> logHook gnomeConfig,
+    logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
     handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
     }
     `additionalKeys` myKeys
@@ -93,3 +93,25 @@ myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt
     windows . W.greedyView . marshall (S scr) $ myWorkspaces !! ws
   return $ All True
 myClientMessageEventHook _ = return $ All True
+
+-- code lifted from darcs xmonad-contrib XMonad.Hooks.ICCCMFocus
+
+atom_WM_TAKE_FOCUS :: X Atom
+atom_WM_TAKE_FOCUS = getAtom "WM_TAKE_FOCUS"
+
+takeFocusX :: Window -> X ()
+takeFocusX w =
+  withWindowSet . const $ do
+    dpy       <- asks display
+    wmtakef   <- atom_WM_TAKE_FOCUS
+    wmprot    <- atom_WM_PROTOCOLS
+    protocols <- io $ getWMProtocols dpy w
+    when (wmtakef `elem` protocols) $
+      io . allocaXEvent $ \ev -> do
+        setEventType ev clientMessage
+        setClientMessageEvent ev w wmprot 32 wmtakef currentTime
+        sendEvent dpy w False noEventMask ev
+
+takeTopFocus :: X ()
+takeTopFocus =
+  (withWindowSet $ maybe (setFocusX =<< asks theRoot) takeFocusX . W.peek) -- >> setWMName "LG3D"
