@@ -45,6 +45,9 @@ myLayouts = desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide |
     ratio      = 1/2
     delta      = 3/100
 
+myManageHook =
+  className =? "Putty" --> doFloat
+
 main = do
   -- open the DBus connection for status updates
   dbus <- DBC.connectSession
@@ -55,6 +58,7 @@ main = do
     modMask = myModm,
     terminal = myTerminal,
     layoutHook = myLayouts,
+    manageHook = myManageHook <+> manageHook gnomeConfig,
     logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
     handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
     }
