@@ -37,6 +37,7 @@ myColors = Map.fromList [
   ("default", ("#808080", "#202020")),
   ("ws-visible", ("#d0d0d0", "#606060")),
   ("ws-hidden", ("#909090", "#202020")),
+  ("ws-empty", ("#606060", "#202020")),
   ("ws-urgent", ("#ffffff", "#700000")),
   ("title", ("#d0d0d0", "#202020"))
   ]
@@ -206,7 +207,7 @@ makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
     makeName WSCurrent _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
     makeName WSVisible _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
     makeName WSHidden  _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
-    makeName WSEmpty   _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
+    makeName WSEmpty   _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
 
 dzen2Color :: (String, String) -> String -> String
 dzen2Color (fg, bg) str =
