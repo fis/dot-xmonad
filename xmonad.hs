@@ -8,10 +8,12 @@ import qualified XMonad.Layout.HintedTile as HT
 import XMonad.Layout.IndependentScreens
 import XMonad.Layout.LayoutHints
 import qualified XMonad.StackSet as W
-import XMonad.Util.Run(spawnPipe)
 import XMonad.Util.EZConfig(additionalKeys)
+import XMonad.Util.NamedScratchpad
+import XMonad.Util.Run(spawnPipe)
+import XMonad.Util.WorkspaceCompare
 
-import Control.Monad (when)
+import Control.Monad (liftM,when)
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
@@ -27,10 +29,11 @@ myTerminal = "urxvt"
 
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
 
-myKeys =
-  [ ((myModm, xK_Return), spawn myTerminal)
-  , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
-  , ((myModm, xK_r), gnomeRun)
+myKeys conf = [
+  ((myModm, xK_Return), spawn myTerminal),
+  ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
+  ((myModm .|. shiftMask, xK_Return), windows W.swapMaster),
+  ((myModm, xK_r), gnomeRun)
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
@@ -45,24 +48,32 @@ myLayouts = desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide |
     ratio      = 1/2
     delta      = 3/100
 
-myManageHook =
-  className =? "Putty" --> doFloat
+myScratchpads = [
+  NS "scratchterm" (myTerminal ++ " -name scratchterm") (resource =? "scratchterm") centeredFloating
+  ]
+  where
+    centeredFloating = customFloating $ W.RationalRect 0.25 0.25 0.5 0.5
+
+myManageHook = composeAll [
+  className =? "Putty" --> doFloat,
+  namedScratchpadManageHook myScratchpads
+  ]
 
 main = do
   -- open the DBus connection for status updates
   dbus <- DBC.connectSession
   -- start XMonad
   nScreens <- countScreens
-  xmonad $ withUrgencyHook NoUrgencyHook $ gnomeConfig {
-    workspaces = withScreens nScreens myWorkspaces,
-    modMask = myModm,
-    terminal = myTerminal,
-    layoutHook = myLayouts,
-    manageHook = myManageHook <+> manageHook gnomeConfig,
-    logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
-    handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
-    }
-    `additionalKeys` myKeys
+  let conf = withUrgencyHook NoUrgencyHook $ gnomeConfig {
+        workspaces = withScreens nScreens myWorkspaces,
+        modMask = myModm,
+        terminal = myTerminal,
+        layoutHook = myLayouts,
+        manageHook = myManageHook <+> manageHook gnomeConfig,
+        logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
+        handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
+        }
+  xmonad $ conf `additionalKeys` myKeys conf
 
 -- dbus status update code
 
@@ -81,6 +92,7 @@ myDBusLogHook c = do
       ppHiddenNoWindows = (++"/e"),
       ppUrgent = (++"/u"),
       ppSep = ";", ppWsSep = ",",
+      ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex,
       ppTitle = id, ppLayout = id
       }
 
