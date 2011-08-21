@@ -62,7 +62,7 @@ data Event = StatusUpdate String
 data WSType = WSCurrent | WSVisible | WSHidden | WSEmpty
               deriving (Eq, Ord, Show)
 data WS = WS String WSType Bool
-          deriving Show
+          deriving (Eq, Show)
 
 wsName :: WS -> String
 wsName (WS name _ _) = name
@@ -117,10 +117,9 @@ handleEvents chan dzen dpy = do
     handle (StatusUpdate msg) = do
       -- update current state
       oldState <- get
-      let newState = parseUpdate msg oldState
+      let (newState, toUpdate) = parseUpdate msg oldState
       put newState
       -- redraw necessary dzen toolbars
-      let toUpdate = nub $ barActiveScreen <$> [oldState, newState]
       mapM_ update toUpdate
     -- click events from dzen
     handle (DzenActivity screen event) =
@@ -149,20 +148,26 @@ handleEvents chan dzen dpy = do
         X.sendEvent dpy rw False X.structureNotifyMask e
         X.sync dpy False
 
-parseUpdate :: String -> BarState -> BarState
+parseUpdate :: String -> BarState -> (BarState, [Int])
 parseUpdate str oldState =
   let (wsstr:(layout:title)) = splitOn ";" str
       screenList = [0..((barScreenCount oldState) - 1)]
       allWorkspaces = parseWorkspaces wsstr
       newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
       newWorkspaces = map (getWorkspaces allWorkspaces) screenList
-      newTitle = if title == [] then "" else head title in
-  oldState {
-    barActiveScreen = newActiveScreen,
-    barWorkspaces = newWorkspaces,
-    barLayouts = insertTo newActiveScreen layout $ barLayouts oldState,
-    barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
-    }
+      newTitle = if title == [] then "" else head title
+      newState = oldState {
+        barActiveScreen = newActiveScreen,
+        barWorkspaces = newWorkspaces,
+        barLayouts = insertTo newActiveScreen layout $ barLayouts oldState,
+        barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
+        } in
+  (newState,
+   findIndices (not . and) . transpose $ [
+     zipWith (==) newWorkspaces $ barWorkspaces oldState,
+     zipWith (==) (barLayouts newState) (barLayouts oldState),
+     zipWith (==) (barTitles newState) (barTitles oldState)
+     ])
   where
     getWorkspaces :: [(Int, WS)] -> Int -> [WS]
     getWorkspaces wslist screen =
