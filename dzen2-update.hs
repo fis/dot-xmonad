@@ -10,6 +10,7 @@ import Data.List
 import Data.List.Split
 import Data.Maybe
 import Data.Word
+import System.Exit
 import System.IO
 import System.Process
 import Text.Regex.Posix
@@ -25,6 +26,7 @@ import qualified Graphics.X11.Xinerama as XI
 
 import qualified DBus.Address as DBA
 import qualified DBus.Client as DBC
+import qualified DBus.Client.Simple as DBS
 import qualified DBus.Constants as DBK
 import qualified DBus.Message as DBM
 import qualified DBus.Types as DBT
@@ -90,11 +92,11 @@ main = do
   screens <- maybe (xineramaQuery dpy) return myScreens
   -- set up a channel for event-receiving
   eventChan <- newChan
+  -- set up DBus listener to feed the event channel
+  dbusSetupListener eventChan
   -- start a dzen2 process for each screen, fork a thread to get events
   dzenHandles <- mapM startDzen2 screens
   mapM_ (readDzen2 eventChan) $ zip [0..] dzenHandles
-  -- set up DBus listener to feed the event channel
-  dbusSetupListener eventChan
   -- handle events until the end
   evalStateT (forever $ handleEvents eventChan dzenHandles dpy) $ initState screens
   where
@@ -263,15 +265,22 @@ readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
 
 dbusSetupListener :: Chan Event -> IO ()
 dbusSetupListener eventChan = do
+  -- connect to session bus
   dbus <- DBC.connect . head . fromJust =<< DBA.getSession
-  DBC.listen dbus match callback
+  -- make sure we're the only instance of dzen2-update running
+  nameReply <- DBS.requestName dbus ourName [DBS.DoNotQueue]
+  case nameReply of
+    DBS.PrimaryOwner -> DBC.listen dbus match callback
+    _                -> barf
   where
+    ourName :: DBT.BusName
+    ourName = DBT.busName_ $ T.pack "fi.zem.XMonad.Dzen2Update"
     match :: DBC.MatchRule
     match = DBC.MatchRule {
       DBC.matchSender = Nothing,
       DBC.matchDestination = Nothing,
-      DBC.matchPath = Just . DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status",
-      DBC.matchInterface = Just . DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status",
+      DBC.matchPath = DBT.objectPath $ T.pack "/fi/zem/xmonad/status",
+      DBC.matchInterface = DBT.interfaceName $ T.pack "fi.zem.XMonad.Status",
       DBC.matchMember = Nothing
       }
     callback :: DBT.BusName -> DBM.Signal -> IO ()
@@ -280,6 +289,8 @@ dbusSetupListener eventChan = do
     getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
     handle :: String -> [DBT.Variant] -> IO ()
     handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
+    barf :: IO ()
+    barf = putStrLn "dzen2-update already running" >> exitFailure
 
 -- xinerama screen query
 

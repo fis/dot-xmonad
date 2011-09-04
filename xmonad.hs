@@ -62,6 +62,8 @@ myManageHook = composeAll [
 main = do
   -- open the DBus connection for status updates
   dbus <- DBC.connectSession
+  -- start dzen2-update if it's not running yet
+  spawn "./.xmonad/dzen2-update"
   -- start XMonad
   nScreens <- countScreens
   let conf = withUrgencyHook NoUrgencyHook $ gnomeConfig {
