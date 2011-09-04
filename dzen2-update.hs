@@ -263,8 +263,7 @@ readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
 
 dbusSetupListener :: Chan Event -> IO ()
 dbusSetupListener eventChan = do
-  addr <- DBA.getSession
-  dbus <- DBC.connect $ head . fromJust $ addr
+  dbus <- DBC.connect . head . fromJust =<< DBA.getSession
   DBC.listen dbus match callback
   where
     match :: DBC.MatchRule
