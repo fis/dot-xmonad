@@ -1,4 +1,5 @@
 import XMonad
+import XMonad.Actions.OnScreen
 import XMonad.Config.Desktop
 import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
@@ -108,7 +109,7 @@ myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt
     let arg = (fromIntegral (head dt) :: Int)
         scr = arg `div` 65536
         ws = arg `mod` 65536
-    windows . W.greedyView . marshall (S scr) $ myWorkspaces !! ws
+    windows . greedyViewOnScreen (S scr) . marshall (S scr) $ myWorkspaces !! ws
   return $ All True
 myClientMessageEventHook _ = return $ All True
 
