@@ -34,7 +34,8 @@ myKeys conf = [
   ((myModm, xK_Return), spawn myTerminal),
   ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
   ((myModm .|. shiftMask, xK_Return), windows W.swapMaster),
-  ((myModm, xK_r), gnomeRun)
+  ((myModm, xK_r), gnomeRun),
+  ((0, xK_Print), spawn "gnome-screenshot -i")
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
