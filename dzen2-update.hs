@@ -250,7 +250,8 @@ startDzen2 ((xpos,ypos), (width,_)) = do
       ["-ta", "l",
        "-x", show xpos, "-y", show ypos, "-w", show width, "-h", show myBarHeight,
        "-fg", fg, "-bg", bg,
-       "-fn", myFont
+       "-fn", myFont,
+       "-e", "button3=print:m3"
       ]
 
 readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
