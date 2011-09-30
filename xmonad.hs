@@ -30,12 +30,13 @@ myTerminal = "urxvt"
 
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
 
-myKeys conf = [
+myKeys conf dbus = [
   ((myModm, xK_Return), spawn myTerminal),
-  ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
   ((myModm .|. shiftMask, xK_Return), windows W.swapMaster),
+  ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
   ((myModm, xK_r), gnomeRun),
-  ((0, xK_Print), spawn "gnome-screenshot -i")
+  ((0, xK_Print), spawn "gnome-screenshot -i"),
+  ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
@@ -77,18 +78,13 @@ main = do
         logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
         handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
         }
-  xmonad $ conf `additionalKeys` myKeys conf
+  xmonad $ conf `additionalKeys` myKeys conf dbus
 
 -- dbus status update code
 
 myDBusLogHook :: DBC.Client -> X ()
-myDBusLogHook c = do
-  status <- dynamicLogString dbusPP
-  io $ DBC.emit c path ifc mem [DBT.toVariant status]
+myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
   where
-    path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
-    ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"
-    mem = DBT.memberName_ $ T.pack "StatusUpdate"
     dbusPP = defaultPP {
       ppCurrent = (++"/c"),
       ppVisible = (++"/v"),
@@ -99,6 +95,13 @@ myDBusLogHook c = do
       ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex,
       ppTitle = id, ppLayout = id
       }
+
+dbusPost :: DBC.Client -> String -> String -> X ()
+dbusPost c m s = io $ DBC.emit c path ifc mem [DBT.toVariant s]
+  where
+    path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
+    ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"
+    mem = DBT.memberName_ $ T.pack m
 
 -- XClientMessageEvent listener for receiving commands back
 

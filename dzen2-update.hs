@@ -59,6 +59,7 @@ color c = Map.findWithDefault ("#ffffff", "#ff0000") c myColors
 
 data Event = StatusUpdate String
            | DzenActivity Int String
+           | QuitEvent
            deriving Show
 
 data WSType = WSCurrent | WSVisible | WSHidden | WSEmpty
@@ -129,6 +130,8 @@ handleEvents chan dzen dpy = do
         (return ())
         (handleDzenClick screen)
         (matchOnceText (makeRegex "^m1ws([0-9]+)" :: Regex) event)
+    -- quit events for a restarting XMonad
+    handle QuitEvent = liftIO exitSuccess
     -- workspace-switching click events
     handleDzenClick :: Int -> (String, MatchText String, String) -> IO ()
     handleDzenClick scr (_, match, _) =
@@ -290,6 +293,7 @@ dbusSetupListener eventChan = do
     getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
     handle :: String -> [DBT.Variant] -> IO ()
     handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
+    handle "Shutdown" _ = writeChan eventChan QuitEvent
     barf :: IO ()
     barf = putStrLn "dzen2-update already running" >> exitFailure
 
