@@ -15,6 +15,7 @@ import XMonad.Util.Run(spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (liftM,when)
+import qualified Data.ByteString.Char8 as B
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
@@ -81,6 +82,8 @@ main = do
   xmonad $ conf `additionalKeys` myKeys conf dbus
 
 -- dbus status update code
+chars :: String -> String
+chars = show . map fromEnum
 
 myDBusLogHook :: DBC.Client -> X ()
 myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
@@ -93,11 +96,12 @@ myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
       ppUrgent = (++"/u"),
       ppSep = ";", ppWsSep = ",",
       ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex,
-      ppTitle = id, ppLayout = id
+      ppTitle = id,
+      ppLayout = id
       }
 
 dbusPost :: DBC.Client -> String -> String -> X ()
-dbusPost c m s = io $ DBC.emit c path ifc mem [DBT.toVariant s]
+dbusPost c m s = io $ DBC.emit c path ifc mem [DBT.toVariant . B.pack $ s]
   where
     path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
     ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"

@@ -19,6 +19,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 
 import qualified Graphics.X11.Xlib as X
 import qualified Graphics.X11.Xlib.Extras as XE
@@ -292,8 +294,10 @@ dbusSetupListener eventChan = do
     getMemberName :: DBM.Signal -> String
     getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
     handle :: String -> [DBT.Variant] -> IO ()
-    handle "StatusUpdate" [body] = writeChan eventChan $ StatusUpdate $ (fromJust . DBT.fromVariant) body
+    handle "StatusUpdate" [body] = writeChan eventChan . StatusUpdate $ decode body -- (fromJust . DBT.fromVariant) body
     handle "Shutdown" _ = writeChan eventChan QuitEvent
+    decode :: DBT.Variant -> String
+    decode = T.unpack . TE.decodeUtf8With TEE.lenientDecode . fromJust . DBT.fromVariant
     barf :: IO ()
     barf = putStrLn "dzen2-update already running" >> exitFailure
 
