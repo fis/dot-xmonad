@@ -22,9 +22,8 @@ import qualified Data.Text as T
 import System.IO
 import System.Process
 
-import qualified DBus.Address as DBA
-import qualified DBus.Client.Simple as DBC
-import qualified DBus.Types as DBT
+import qualified DBus as DB
+import qualified DBus.Client as DBC
 
 myModm = mod4Mask
 myTerminal = "urxvt"
@@ -82,8 +81,6 @@ main = do
   xmonad $ conf `additionalKeys` myKeys conf dbus
 
 -- dbus status update code
-chars :: String -> String
-chars = show . map fromEnum
 
 myDBusLogHook :: DBC.Client -> X ()
 myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
@@ -101,11 +98,13 @@ myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
       }
 
 dbusPost :: DBC.Client -> String -> String -> X ()
-dbusPost c m s = io $ DBC.emit c path ifc mem [DBT.toVariant . B.pack $ s]
+dbusPost c m s = io $ DBC.emit c sig
   where
-    path = DBT.objectPath_ $ T.pack "/fi/zem/xmonad/status"
-    ifc = DBT.interfaceName_ $ T.pack "fi.zem.XMonad.Status"
-    mem = DBT.memberName_ $ T.pack m
+    sig = (DB.signal path ifc mem) { DB.signalBody = body }
+    path = DB.objectPath_ "/fi/zem/xmonad/status"
+    ifc = DB.interfaceName_ "fi.zem.XMonad.Status"
+    mem = DB.memberName_ m
+    body = [DB.toVariant . B.pack $ s]
 
 -- XClientMessageEvent listener for receiving commands back
 

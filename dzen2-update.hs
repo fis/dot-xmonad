@@ -26,12 +26,8 @@ import qualified Graphics.X11.Xlib as X
 import qualified Graphics.X11.Xlib.Extras as XE
 import qualified Graphics.X11.Xinerama as XI
 
-import qualified DBus.Address as DBA
+import qualified DBus as DB
 import qualified DBus.Client as DBC
-import qualified DBus.Client.Simple as DBS
-import qualified DBus.Constants as DBK
-import qualified DBus.Message as DBM
-import qualified DBus.Types as DBT
 
 -- configuration
 
@@ -272,32 +268,29 @@ readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
 dbusSetupListener :: Chan Event -> IO ()
 dbusSetupListener eventChan = do
   -- connect to session bus
-  dbus <- DBC.connect . head . fromJust =<< DBA.getSession
+  dbus <- DBC.connect . fromJust =<< DB.getSessionAddress
   -- make sure we're the only instance of dzen2-update running
-  nameReply <- DBS.requestName dbus ourName [DBS.DoNotQueue]
+  nameReply <- DBC.requestName dbus ourName [DBC.nameDoNotQueue]
   case nameReply of
-    DBS.PrimaryOwner -> DBC.listen dbus match callback
-    _                -> barf
+    DBC.NamePrimaryOwner -> DBC.listen dbus match callback
+    _                    -> barf
   where
-    ourName :: DBT.BusName
-    ourName = DBT.busName_ $ T.pack "fi.zem.XMonad.Dzen2Update"
+    ourName :: DB.BusName
+    ourName = DB.busName_ "fi.zem.XMonad.Dzen2Update"
     match :: DBC.MatchRule
-    match = DBC.MatchRule {
-      DBC.matchSender = Nothing,
-      DBC.matchDestination = Nothing,
-      DBC.matchPath = DBT.objectPath $ T.pack "/fi/zem/xmonad/status",
-      DBC.matchInterface = DBT.interfaceName $ T.pack "fi.zem.XMonad.Status",
-      DBC.matchMember = Nothing
+    match = DBC.matchAny {
+      DBC.matchPath = DB.parseObjectPath "/fi/zem/xmonad/status",
+      DBC.matchInterface = DB.parseInterfaceName "fi.zem.XMonad.Status"
       }
-    callback :: DBT.BusName -> DBM.Signal -> IO ()
-    callback _ sig = handle (getMemberName sig) (DBM.signalBody sig)
-    getMemberName :: DBM.Signal -> String
-    getMemberName = T.unpack . DBT.memberNameText . DBM.signalMember
-    handle :: String -> [DBT.Variant] -> IO ()
-    handle "StatusUpdate" [body] = writeChan eventChan . StatusUpdate $ decode body -- (fromJust . DBT.fromVariant) body
+    callback :: DB.Signal -> IO ()
+    callback sig = handle (getMemberName sig) (DB.signalBody sig)
+    getMemberName :: DB.Signal -> String
+    getMemberName = DB.formatMemberName . DB.signalMember
+    handle :: String -> [DB.Variant] -> IO ()
+    handle "StatusUpdate" [body] = writeChan eventChan . StatusUpdate $ decode body
     handle "Shutdown" _ = writeChan eventChan QuitEvent
-    decode :: DBT.Variant -> String
-    decode = T.unpack . TE.decodeUtf8With TEE.lenientDecode . fromJust . DBT.fromVariant
+    decode :: DB.Variant -> String
+    decode = T.unpack . TE.decodeUtf8With TEE.lenientDecode . fromJust . DB.fromVariant
     barf :: IO ()
     barf = putStrLn "dzen2-update already running" >> exitFailure
 
