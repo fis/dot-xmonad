@@ -3,12 +3,15 @@ import XMonad.Actions.OnScreen
 import XMonad.Config.Desktop
 import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
+import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ICCCMFocus
 import XMonad.Hooks.ManageDocks
+import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.UrgencyHook
 import qualified XMonad.Layout.HintedTile as HT
 import XMonad.Layout.IndependentScreens
 import XMonad.Layout.LayoutHints
+import XMonad.Layout.NoBorders
 import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig(additionalKeys)
 import XMonad.Util.NamedScratchpad
@@ -45,7 +48,7 @@ myKeys conf dbus = [
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
+myLayouts = smartBorders $ (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
   where
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
@@ -59,6 +62,7 @@ myScratchpads = [
     centeredFloating = customFloating $ W.RationalRect 0.25 0.25 0.5 0.5
 
 myManageHook = composeAll [
+  isFullscreen --> doFullFloat,
   className =? "Putty" --> doFloat,
   namedScratchpadManageHook myScratchpads
   ]
@@ -77,7 +81,7 @@ main = do
         layoutHook = myLayouts,
         manageHook = myManageHook <+> manageHook gnomeConfig,
         logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
-        handleEventHook = mappend myClientMessageEventHook $ handleEventHook gnomeConfig
+        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig
         }
   xmonad $ conf `additionalKeys` myKeys conf dbus
 
