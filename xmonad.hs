@@ -44,7 +44,7 @@ myKeys conf dbus = [
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myLayouts = desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full
+myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
   where
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
