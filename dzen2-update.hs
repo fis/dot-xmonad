@@ -156,7 +156,7 @@ parseUpdate str oldState =
   let (wsstr:(layout:title)) = splitOn ";" str
       screenList = [0..((barScreenCount oldState) - 1)]
       allWorkspaces = parseWorkspaces wsstr
-      newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
+      newActiveScreen = fromMaybe (-1) . fmap fst . find ((== WSCurrent) . wsType . snd) $ allWorkspaces
       newWorkspaces = map (getWorkspaces allWorkspaces) screenList
       newTitle = if title == [] then "" else head title
       newState = oldState {
