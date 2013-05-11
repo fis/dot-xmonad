@@ -1,5 +1,6 @@
 import XMonad
 import XMonad.Actions.OnScreen
+import XMonad.Actions.NoBorders
 import XMonad.Config.Desktop
 import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
@@ -7,6 +8,7 @@ import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ICCCMFocus
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
+import XMonad.Hooks.SetWMName
 import XMonad.Hooks.UrgencyHook
 import qualified XMonad.Layout.HintedTile as HT
 import XMonad.Layout.IndependentScreens
@@ -40,7 +42,8 @@ myKeys conf dbus = [
   ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
   ((myModm, xK_r), gnomeRun),
   ((0, xK_Print), spawn "gnome-screenshot -i"),
-  ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
+  ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart"),
+  ((myModm, xK_b), withFocused toggleBorder)
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
@@ -48,7 +51,7 @@ myKeys conf dbus = [
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myLayouts = smartBorders $ (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
+myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
   where
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
@@ -64,6 +67,7 @@ myScratchpads = [
 myManageHook = composeAll [
   isFullscreen --> doFullFloat,
   className =? "Putty" --> doFloat,
+  className =? "net-minecraft-MinecraftLauncher" --> doFloat,
   namedScratchpadManageHook myScratchpads
   ]
 
@@ -81,7 +85,8 @@ main = do
         layoutHook = myLayouts,
         manageHook = myManageHook <+> manageHook gnomeConfig,
         logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
-        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig
+        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig,
+        startupHook = setWMName "LG3D"
         }
   xmonad $ conf `additionalKeys` myKeys conf dbus
 
