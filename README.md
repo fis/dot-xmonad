@@ -27,23 +27,18 @@ How do I use it?
 
 Well, if you are sure you *want* to...
 
-Personally I use this on some Ubuntu systems, integramated with Gnome,
-with a single (bottom of one screen) gnome-panel instance in place to
-contain all those fancy and modern indicator applets, tray midgets,
-and whatnot.  For that sort of setup, you'd want to install
-`libghc6-xmonad-dev` and `libghc6-xmonad-contrib-dev` from the Ubuntu
-repositories; that makes it easier to hook it up to Gnome (pre-made
-.desktop files and all that).  Also install `cabal-install`; then
-`cabal install` the packages `dbus-core`, `regex-posix` and `split`.
+These days I use this on Debian without a desktop environment in
+place.  If you're curious, see earlier versions for a Gnome-integrated
+system.
 
-In addition, you might want to use the SVN version of dzen2 (`svn
-checkout http://dzen.googlecode.com/svn/trunk/ dzen`), at least while
-the Ubuntu-packaged version does not do Xft fonts.  (Well, either
-that, or opt for not using a Xft font; edit `dzen2-update.hs`
-accordingly.)
+To use it on Debian, I've installed `libghc-xmonad-dev` and
+`libghc-xmonad-contrib-dev` as well as `cabal-install` from the Debian
+repositories; then used `cabal install` the packages `dbus`,
+`regex-posix`, `split` and `alsa-mixer`.
 
-To hook this up as the Gnome window manager, just `gconftool-2 -s
-/desktop/gnome/session/required_components/windowmanager xmonad --type
-string` and then use a "classic Gnome" sort of session.  It is also
-theoretically possible to make a separate Gnome session thing for
-XMonad, but I haven't bothered.
+I also use the latest development version of dzen2; it used to be the
+case that released dzen2 versions did not do Xft fonts, though this
+may have changed.
+
+The volume control keybindings have been designed for a pure-ALSA
+system and might not be very optimal if you have PulseAudio in place.
