@@ -1,8 +1,8 @@
 import XMonad
+import XMonad.Core (withWindowSet)
 import XMonad.Actions.OnScreen
 import XMonad.Actions.NoBorders
 import XMonad.Config.Desktop
-import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ICCCMFocus
@@ -15,41 +15,55 @@ import XMonad.Layout.IndependentScreens
 import XMonad.Layout.LayoutHints
 import XMonad.Layout.NoBorders
 import qualified XMonad.StackSet as W
-import XMonad.Util.EZConfig(additionalKeys)
+import qualified XMonad.Util.ExtensibleState as XS
+import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
-import XMonad.Util.Run(spawnPipe)
+import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (liftM,when)
 import qualified Data.ByteString.Char8 as B
+import Data.List (isPrefixOf)
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
+import Graphics.X11.ExtraTypes.XF86
 import System.IO
 import System.Process
 
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
+import Zem.VolumeControl
+
 myModm = mod4Mask
 myTerminal = "urxvt"
 
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
 
-myKeys conf dbus = [
-  ((myModm, xK_Return), spawn myTerminal),
-  ((myModm .|. shiftMask, xK_Return), windows W.swapMaster),
-  ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
-  ((myModm, xK_r), gnomeRun),
-  ((0, xK_Print), spawn "gnome-screenshot -i"),
-  ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart"),
-  ((myModm, xK_b), withFocused toggleBorder)
+myKeys conf dbus =
+  [ ((myModm, xK_Return), spawn myTerminal)
+  , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
+  , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
+  , ((myModm, xK_r), myDmenuRun)
+  , ((0, xK_Print), spawn "sleep 0.1; scrot -z -s /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
+  , ((myModm, xK_Print), spawn "scrot -z /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
+  , ((0, xK_Pause), spawn "xscreensaver-command -lock")
+  , ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_b), withFocused toggleBorder)
+  , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
+  , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
+  , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
   | (i, k) <- zip myWorkspaces [xK_1 .. xK_9]
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
+
+myDmenuRun = withWindowSet (spawn .
+                            ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
+                            show . fromEnum . W.screen . W.current)
 
 myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
   where
@@ -67,9 +81,13 @@ myScratchpads = [
 myManageHook = composeAll [
   isFullscreen --> doFullFloat,
   className =? "Putty" --> doFloat,
+  className =? "Pavucontrol" --> doFloat,
   className =? "net-minecraft-MinecraftLauncher" --> doFloat,
+  className =? "Xfce4-notifyd" --> doIgnore,
   namedScratchpadManageHook myScratchpads
   ]
+
+-- main function
 
 main = do
   -- open the DBus connection for status updates
@@ -78,14 +96,14 @@ main = do
   spawn "./.xmonad/dzen2-update"
   -- start XMonad
   nScreens <- countScreens
-  let conf = withUrgencyHook NoUrgencyHook $ gnomeConfig {
+  let conf = withUrgencyHook NoUrgencyHook $ desktopConfig {
         workspaces = withScreens nScreens myWorkspaces,
         modMask = myModm,
         terminal = myTerminal,
         layoutHook = myLayouts,
-        manageHook = myManageHook <+> manageHook gnomeConfig,
-        logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
-        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig,
+        manageHook = myManageHook <+> manageHook desktopConfig,
+        logHook = myDBusLogHook dbus >> takeTopFocus >> logHook desktopConfig,
+        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig,
         startupHook = setWMName "LG3D"
         }
   xmonad $ conf `additionalKeys` myKeys conf dbus
