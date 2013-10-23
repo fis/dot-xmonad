@@ -19,6 +19,9 @@ import Data.Typeable
 import Data.Word
 import Sound.ALSA.Mixer
 import Control.Concurrent
+import Control.Monad
+
+import qualified Data.Traversable as T
 
 import qualified DBus as DB
 import qualified DBus.Client as DBC
@@ -28,51 +31,42 @@ import qualified XMonad.Util.ExtensibleState as XS
 
 -- volume adjustment of single control
 
+doControlVolume :: (Volume -> IO b) -> Control -> IO (Maybe b)
+doControlVolume act ctrl = T.for (playback $ volume ctrl) act
+
 getControlVolume :: Control -> IO (Maybe ([Integer], Integer, Integer))
-getControlVolume ctrl = do
-  case playback $ volume ctrl of
-    Just vol -> do
-      (min, max) <- getRange vol
-      vols <- mapM (flip getChannel $ value vol) (channels $ value vol)
-      return $ Just (catMaybes vols, min, max)
-    Nothing -> return Nothing
+getControlVolume = doControlVolume $ \vol -> do
+  (min, max) <- getRange vol
+  vols <- mapM (flip getChannel $ value vol) (channels $ value vol)
+  return (catMaybes vols, min, max)
 
-setControlVolume :: Control -> Integer -> IO ()
-setControlVolume ctrl newVol = do
-  case playback $ volume ctrl of
-    Just vol -> mapM_ (\ch -> setChannel ch (value vol) newVol) (channels $ value vol)
-    Nothing -> return ()
+setControlVolume :: Integer -> Control -> IO ()
+setControlVolume newVol =
+  void . (doControlVolume $ \vol ->
+           mapM_ (\ch -> setChannel ch (value vol) newVol) (channels $ value vol))
 
-adjustControlVolume :: Control -> Integer -> IO (Maybe (Integer, Integer, Integer))
-adjustControlVolume ctrl offset = do
-  case playback $ volume ctrl of
-    Just vol -> do
-      (vMin, vMax) <- getRange vol
-      maybeVols <- mapM (flip getChannel $ value vol) (channels $ value vol)
-      let vols = catMaybes maybeVols
-          newVol = min vMax . max vMin $ (sum vols `div` genericLength vols) + offset
-      mapM_ (\ch -> setChannel ch (value vol) newVol) (channels $ value vol)
-      return $ Just (newVol, vMin, vMax)
-    Nothing -> return Nothing
+adjustControlVolume :: Integer -> Control -> IO (Maybe (Integer, Integer, Integer))
+adjustControlVolume offset = doControlVolume $ \vol -> do
+  (vMin, vMax) <- getRange vol
+  maybeVols <- mapM (flip getChannel $ value vol) (channels $ value vol)
+  let vols = catMaybes maybeVols
+      newVol = min vMax . max vMin $ (sum vols `div` genericLength vols) + offset
+  mapM_ (\ch -> setChannel ch (value vol) newVol) (channels $ value vol)
+  return (newVol, vMin, vMax)
 
 toggleControlMute :: Control -> IO (Maybe Bool)
-toggleControlMute ctrl = do
-  case playback $ switch ctrl of
-    Just sw -> do
-      old <- getChannel FrontLeft sw
-      case old of
-        Just state -> mapM_ (\ch -> setChannel ch sw (not state)) (channels sw) >> return (Just (not state))
-        Nothing -> return Nothing
-    Nothing -> return Nothing
+toggleControlMute ctrl = fmap join $ T.for (playback $ switch ctrl) toggle
+  where
+    toggle sw =
+      getChannel FrontLeft sw >>= T.traverse (toggleChans sw)
+    toggleChans sw state =
+      mapM_ (\ch -> setChannel ch sw (not state)) (channels sw) >> return (not state)
 
 -- volume adjustment of the default/Master control
 
 withMasterControl :: (Control -> IO a) -> a -> IO a
-withMasterControl f def = do
-  maybeCtrl <- getControlByName "default" "Master"
-  case maybeCtrl of
-    Just ctrl -> f ctrl
-    Nothing   -> return def
+withMasterControl f def =
+  fmap (fromMaybe def) $ getControlByName "default" "Master" >>= T.traverse f
 
 getVolumes :: IO (Maybe ([Integer], Integer, Integer))
 getVolumes = withMasterControl getControlVolume Nothing
@@ -81,10 +75,10 @@ getVolume :: IO (Maybe (Integer, Integer, Integer))
 getVolume = fmap (fmap (\(vols, min, max) -> (sum vols `div` genericLength vols, min, max))) getVolumes
 
 setVolume :: Integer -> IO ()
-setVolume newVol = withMasterControl (flip setControlVolume newVol) ()
+setVolume newVol = withMasterControl (setControlVolume newVol) ()
 
 adjustVolume :: Integer -> IO (Maybe (Integer, Integer, Integer))
-adjustVolume offset = withMasterControl (flip adjustControlVolume offset) Nothing
+adjustVolume offset = withMasterControl (adjustControlVolume offset) Nothing
 
 toggleMute :: IO (Maybe Bool)
 toggleMute = withMasterControl toggleControlMute Nothing
@@ -98,12 +92,11 @@ data VolumeNotificationState =
 instance ExtensionClass VolumeNotificationState where
   initialValue = VolumeNotificationState { lastNotification = Nothing }
 
-performAndNotify :: DBC.Client -> IO (Maybe a) -> (a -> String) -> X ()
 performAndNotify dbus act fmt = do
   state <- XS.get :: X (VolumeNotificationState)
   currentTime <- io getCurrentTime
   let closeTime = addUTCTime 5 currentTime
-  res <- io $ act
+  res <- io act
   case res of
     Just result ->
       io (DBC.call_ dbus method) >>= updateState
