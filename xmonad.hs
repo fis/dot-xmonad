@@ -34,13 +34,13 @@ myTerminal = "urxvt"
 
 myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
 
-myKeys conf dbus = [
-  ((myModm, xK_Return), spawn myTerminal),
-  ((myModm .|. shiftMask, xK_Return), windows W.swapMaster),
-  ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm"),
-  ((myModm, xK_r), gnomeRun),
-  ((0, xK_Print), spawn "gnome-screenshot -i"),
-  ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
+myKeys conf dbus =
+  [ ((myModm, xK_Return), spawn myTerminal)
+  , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
+  , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
+  , ((myModm, xK_r), gnomeRun)
+  , ((0, xK_Print), spawn "gnome-screenshot -i")
+  , ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
   ]
   ++
   [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
@@ -55,17 +55,17 @@ myLayouts = smartBorders $ (desktopLayoutModifiers $ hintedTile HT.Tall ||| hint
     ratio      = 1/2
     delta      = 3/100
 
-myScratchpads = [
-  NS "scratchterm" (myTerminal ++ " -name scratchterm") (resource =? "scratchterm") centeredFloating
+myScratchpads =
+  [ NS "scratchterm" (myTerminal ++ " -name scratchterm") (resource =? "scratchterm") centeredFloating
   ]
   where
     centeredFloating = customFloating $ W.RationalRect 0.25 0.25 0.5 0.5
 
-myManageHook = composeAll [
-  isFullscreen --> doFullFloat,
-  className =? "Putty" --> doFloat,
-  namedScratchpadManageHook myScratchpads
-  ]
+myManageHook =
+  composeAll [ isFullscreen --> doFullFloat
+             , className =? "Putty" --> doFloat
+             , namedScratchpadManageHook myScratchpads
+             ]
 
 main = do
   -- open the DBus connection for status updates
@@ -74,33 +74,33 @@ main = do
   spawn "./.xmonad/dzen2-update"
   -- start XMonad
   nScreens <- countScreens
-  let conf = withUrgencyHook NoUrgencyHook $ gnomeConfig {
-        workspaces = withScreens nScreens myWorkspaces,
-        modMask = myModm,
-        terminal = myTerminal,
-        layoutHook = myLayouts,
-        manageHook = myManageHook <+> manageHook gnomeConfig,
-        logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig,
-        handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig
-        }
-  xmonad $ conf `additionalKeys` myKeys conf dbus
+  let conf = gnomeConfig
+               { workspaces = withScreens nScreens myWorkspaces
+               , modMask = myModm
+               , terminal = myTerminal
+               , layoutHook = myLayouts
+               , manageHook = myManageHook <+> manageHook gnomeConfig
+               , logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig
+               , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig
+               }
+  xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus
 
 -- dbus status update code
 
 myDBusLogHook :: DBC.Client -> X ()
 myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
   where
-    dbusPP = defaultPP {
-      ppCurrent = (++"/c"),
-      ppVisible = (++"/v"),
-      ppHidden = (++"/h"),
-      ppHiddenNoWindows = (++"/e"),
-      ppUrgent = (++"/u"),
-      ppSep = ";", ppWsSep = ",",
-      ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex,
-      ppTitle = id,
-      ppLayout = id
-      }
+    dbusPP = defaultPP
+               { ppCurrent = (++"/c")
+               , ppVisible = (++"/v")
+               , ppHidden = (++"/h")
+               , ppHiddenNoWindows = (++"/e")
+               , ppUrgent = (++"/u")
+               , ppSep = ";", ppWsSep = ","
+               , ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex
+               , ppTitle = id
+               , ppLayout = id
+               }
 
 dbusPost :: DBC.Client -> String -> String -> X ()
 dbusPost c m s = io $ DBC.emit c sig
