@@ -1,21 +1,24 @@
 import XMonad
+import XMonad.Core (withWindowSet)
 import XMonad.Actions.OnScreen
+import XMonad.Actions.NoBorders
 import XMonad.Config.Desktop
-import XMonad.Config.Gnome
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ICCCMFocus
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
+import XMonad.Hooks.SetWMName
 import XMonad.Hooks.UrgencyHook
 import qualified XMonad.Layout.HintedTile as HT
 import XMonad.Layout.LayoutHints
 import XMonad.Layout.NoBorders
 import qualified XMonad.StackSet as W
-import XMonad.Util.EZConfig(additionalKeys)
+import qualified XMonad.Util.ExtensibleState as XS
+import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.NamedWindows
-import XMonad.Util.Run(spawnPipe)
+import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (ap,liftM,when)
@@ -26,11 +29,14 @@ import Data.List
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
+import Graphics.X11.ExtraTypes.XF86
 import System.IO
 import System.Process
 
 import qualified DBus as DB
 import qualified DBus.Client as DBC
+
+import Zem.VolumeControl
 
 myModm = mod4Mask
 myTerminal = "urxvt"
@@ -41,9 +47,15 @@ myKeys conf dbus =
   [ ((myModm, xK_Return), spawn myTerminal)
   , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
-  , ((myModm, xK_r), gnomeRun)
-  , ((0, xK_Print), spawn "gnome-screenshot -i")
+  , ((myModm, xK_r), myDmenuRun)
+  , ((0, xK_Print), spawn "sleep 0.1; scrot -z -s /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
+  , ((myModm, xK_Print), spawn "scrot -z /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
+  , ((0, xK_Pause), spawn "xscreensaver-command -lock")
   , ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_b), withFocused toggleBorder)
+  , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
+  , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
+  , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
   ]
   ++
   [ ((m .|. myModm, k), windows $ f i)
@@ -51,7 +63,11 @@ myKeys conf dbus =
   , (f, m) <- [(W.view, 0), (W.shift, shiftMask)]
   ]
 
-myLayouts = smartBorders $ (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
+myDmenuRun = withWindowSet (spawn .
+                            ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
+                            show . fromEnum . W.screen . W.current)
+
+myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
   where
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
@@ -67,8 +83,12 @@ myScratchpads =
 myManageHook =
   composeAll [ isFullscreen --> doFullFloat
              , className =? "Putty" --> doFloat
+             , className =? "net-minecraft-MinecraftLauncher" --> doFloat
+             , className =? "Xfce4-notifyd" --> doFloat
              , namedScratchpadManageHook myScratchpads
              ]
+
+-- main function
 
 main = do
   -- open the DBus connection for status updates
@@ -76,14 +96,15 @@ main = do
   -- start dzen2-update if it's not running yet
   spawn "./.xmonad/dzen2-update"
   -- start XMonad
-  let conf = gnomeConfig
+  let conf = desktopConfig
                { workspaces = myWorkspaces
                , modMask = myModm
                , terminal = myTerminal
                , layoutHook = myLayouts
-               , manageHook = myManageHook <+> manageHook gnomeConfig
-               , logHook = myDBusLogHook dbus >> takeTopFocus >> logHook gnomeConfig
-               , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook gnomeConfig
+               , manageHook = myManageHook <+> manageHook desktopConfig
+               , logHook = myDBusLogHook dbus >> takeTopFocus >> logHook desktopConfig
+               , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
+               , startupHook = setWMName "LG3D"
                }
   xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus
 
