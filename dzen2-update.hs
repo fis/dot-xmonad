@@ -35,14 +35,15 @@ import qualified DBus.Client as DBC
 
 myDzen2 = "/usr/bin/dzen2"
 
-myColors = Map.fromList [
-  ("default", ("#808080", "#202020")),
-  ("ws-visible", ("#d0d0d0", "#606060")),
-  ("ws-hidden", ("#909090", "#202020")),
-  ("ws-empty", ("#606060", "#202020")),
-  ("ws-urgent", ("#ffffff", "#700000")),
-  ("title", ("#d0d0d0", "#202020"))
-  ]
+myColors = Map.fromList
+             [ ("default", ("#808080", "#202020"))
+             , ("ws-current", ("#d0d0d0", "#606060"))
+             , ("ws-visible", ("#a0a0a0", "#303030"))
+             , ("ws-hidden", ("#909090", "#202020"))
+             , ("ws-empty", ("#606060", "#202020"))
+             , ("ws-urgent", ("#ffffff", "#700000"))
+             , ("title", ("#d0d0d0", "#202020"))
+             ]
 
 myFont = "DejaVu Sans:size=10"
 myBarHeight = 20
@@ -173,14 +174,16 @@ parseUpdate (screen, workspaces, layout, title) oldState =
      ])
   where
     getWorkspaces :: Int -> [WS]
-    getWorkspaces _ = map parseWorkspace workspaces
-    parseWorkspace :: (String, Int32, Int32, Bool) -> WS
-    parseWorkspace (tag, kind, _, urg) = WS tag (parseWSType kind) urg
-    parseWSType :: Int32 -> WSType
-    parseWSType 0 = WSCurrent
-    parseWSType 1 = WSVisible
-    parseWSType 2 = WSHidden
-    parseWSType 3 = WSEmpty
+    getWorkspaces scr = map (parseWorkspace scr) workspaces
+    parseWorkspace :: Int -> (String, Int32, Int32, Bool) -> WS
+    parseWorkspace scr (tag, kind, wscr, urg) = WS tag (parseWSType kind (scr == fromEnum wscr)) urg
+    parseWSType :: Int32 -> Bool -> WSType
+    parseWSType 0 True = WSCurrent
+    parseWSType 0 False = WSVisible
+    parseWSType 1 True = WSCurrent
+    parseWSType 1 False = WSVisible
+    parseWSType 2 _ = WSHidden
+    parseWSType 3 _ = WSEmpty
     insertTo :: Int -> a -> [a] -> [a]
     insertTo at title old =
       let (before, (_:after)) = splitAt at old in
@@ -207,7 +210,7 @@ makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
     makeIcon _       = "^r(6x6)^r(2x0)"
     makeName :: WSType -> Bool -> String -> String
     makeName _         True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
-    makeName WSCurrent _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
+    makeName WSCurrent _    = dzen2Color (color "ws-current") . dzen2Gap (2,2)
     makeName WSVisible _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
     makeName WSHidden  _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
     makeName WSEmpty   _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
