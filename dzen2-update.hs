@@ -5,6 +5,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.State
 import Data.Array
 import Data.Function
+import Data.Int
 import Data.Ix
 import Data.List
 import Data.List.Split
@@ -18,6 +19,7 @@ import Text.Regex.Posix
 import Data.Map (Map)
 import qualified Data.Map as Map
 
+import qualified Data.ByteString as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
@@ -55,7 +57,7 @@ color c = Map.findWithDefault ("#ffffff", "#ff0000") c myColors
 
 -- main application
 
-data Event = StatusUpdate String
+data Event = StatusUpdate (Int32, [(String, Int32, Int32, Bool)], String, B.ByteString)
            | DzenActivity Int String
            | QuitEvent
            deriving Show
@@ -151,41 +153,34 @@ handleEvents chan dzen dpy = do
         X.sendEvent dpy rw False X.structureNotifyMask e
         X.sync dpy False
 
-parseUpdate :: String -> BarState -> (BarState, [Int])
-parseUpdate str oldState =
-  let (wsstr:(layout:title)) = splitOn ";" str
-      screenList = [0..((barScreenCount oldState) - 1)]
-      allWorkspaces = parseWorkspaces wsstr
-      newActiveScreen = (fst . fromJust . find ((== WSCurrent) . wsType . snd)) allWorkspaces
-      newWorkspaces = map (getWorkspaces allWorkspaces) screenList
-      newTitle = if title == [] then "" else head title
-      newState = oldState {
-        barActiveScreen = newActiveScreen,
-        barWorkspaces = newWorkspaces,
-        barLayouts = insertTo newActiveScreen layout $ barLayouts oldState,
-        barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
-        } in
+parseUpdate :: (Int32, [(String, Int32, Int32, Bool)], String, B.ByteString) -> BarState -> (BarState, [Int])
+parseUpdate (screen, workspaces, layout, title) oldState =
+  let screenList = [0..((barScreenCount oldState) - 1)]
+      newActiveScreen = fromEnum screen :: Int
+      newWorkspaces = map getWorkspaces screenList
+      newTitle = if B.null title then "" else T.unpack . TE.decodeUtf8With TEE.lenientDecode $ title
+      newState = oldState
+                   { barActiveScreen = newActiveScreen
+                   , barWorkspaces = newWorkspaces
+                   , barLayouts = insertTo newActiveScreen layout $ barLayouts oldState
+                   , barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
+                   } in
   (newState,
-   findIndices (not . and) . transpose $ [
-     zipWith (==) newWorkspaces $ barWorkspaces oldState,
-     zipWith (==) (barLayouts newState) (barLayouts oldState),
-     zipWith (==) (barTitles newState) (barTitles oldState)
+   findIndices (not . and) . transpose $
+     [ zipWith (==) newWorkspaces (barWorkspaces oldState)
+     , zipWith (==) (barLayouts newState) (barLayouts oldState)
+     , zipWith (==) (barTitles newState) (barTitles oldState)
      ])
   where
-    getWorkspaces :: [(Int, WS)] -> Int -> [WS]
-    getWorkspaces wslist screen =
-      map snd $ filter ((== screen) . fst) wslist
-    parseWorkspaces :: String -> [(Int, WS)]
-    parseWorkspaces = map parseWorkspace . splitOn ","
-    parseWorkspace :: String -> (Int, WS)
-    parseWorkspace str =
-      let (_, _, _, [scr, name, wtype, urg]) = str =~ "^([0-9]+)_([^/]*)/([cvhe])(/u)?" :: (String, String, String, [String]) in
-      (read scr :: Int, WS name (parseWSType wtype) (urg /= ""))
-    parseWSType :: String -> WSType
-    parseWSType "c" = WSCurrent
-    parseWSType "v" = WSVisible
-    parseWSType "h" = WSHidden
-    parseWSType "e" = WSEmpty
+    getWorkspaces :: Int -> [WS]
+    getWorkspaces _ = map parseWorkspace workspaces
+    parseWorkspace :: (String, Int32, Int32, Bool) -> WS
+    parseWorkspace (tag, kind, _, urg) = WS tag (parseWSType kind) urg
+    parseWSType :: Int32 -> WSType
+    parseWSType 0 = WSCurrent
+    parseWSType 1 = WSVisible
+    parseWSType 2 = WSHidden
+    parseWSType 3 = WSEmpty
     insertTo :: Int -> a -> [a] -> [a]
     insertTo at title old =
       let (before, (_:after)) = splitAt at old in
@@ -287,10 +282,10 @@ dbusSetupListener eventChan = do
     getMemberName :: DB.Signal -> String
     getMemberName = DB.formatMemberName . DB.signalMember
     handle :: String -> [DB.Variant] -> IO ()
-    handle "StatusUpdate" [body] = writeChan eventChan . StatusUpdate $ decode body
+    handle "StatusUpdate" [body] = case DB.fromVariant body of
+      Just update -> writeChan eventChan . StatusUpdate $ update
+      Nothing -> return ()
     handle "Shutdown" _ = writeChan eventChan QuitEvent
-    decode :: DB.Variant -> String
-    decode = T.unpack . TE.decodeUtf8With TEE.lenientDecode . fromJust . DB.fromVariant
     barf :: IO ()
     barf = putStrLn "dzen2-update already running" >> exitFailure
 

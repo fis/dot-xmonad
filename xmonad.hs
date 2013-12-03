@@ -9,17 +9,20 @@ import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.UrgencyHook
 import qualified XMonad.Layout.HintedTile as HT
-import XMonad.Layout.IndependentScreens
 import XMonad.Layout.LayoutHints
 import XMonad.Layout.NoBorders
 import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig(additionalKeys)
 import XMonad.Util.NamedScratchpad
+import XMonad.Util.NamedWindows
 import XMonad.Util.Run(spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
-import Control.Monad (liftM,when)
+import Control.Monad (ap,liftM,when)
 import qualified Data.ByteString.Char8 as B
+import Data.Function
+import Data.Int
+import Data.List
 import Data.Maybe
 import Data.Monoid
 import qualified Data.Text as T
@@ -32,7 +35,7 @@ import qualified DBus.Client as DBC
 myModm = mod4Mask
 myTerminal = "urxvt"
 
-myWorkspaces = ["web", "com", "work1", "work2", "x1", "x2", "x3", "x4"]
+myWorkspaces = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
 
 myKeys conf dbus =
   [ ((myModm, xK_Return), spawn myTerminal)
@@ -43,9 +46,9 @@ myKeys conf dbus =
   , ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
   ]
   ++
-  [ ((m .|. myModm, k), windows $ onCurrentScreen f i)
+  [ ((m .|. myModm, k), windows $ f i)
   | (i, k) <- zip myWorkspaces [xK_1 .. xK_9]
-  , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
+  , (f, m) <- [(W.view, 0), (W.shift, shiftMask)]
   ]
 
 myLayouts = smartBorders $ (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| Full
@@ -73,9 +76,8 @@ main = do
   -- start dzen2-update if it's not running yet
   spawn "./.xmonad/dzen2-update"
   -- start XMonad
-  nScreens <- countScreens
   let conf = gnomeConfig
-               { workspaces = withScreens nScreens myWorkspaces
+               { workspaces = myWorkspaces
                , modMask = myModm
                , terminal = myTerminal
                , layoutHook = myLayouts
@@ -88,28 +90,47 @@ main = do
 -- dbus status update code
 
 myDBusLogHook :: DBC.Client -> X ()
-myDBusLogHook c = dynamicLogString dbusPP >>= dbusPost c "StatusUpdate"
+myDBusLogHook client = withWindowSet log >>= dbusPostRaw client "StatusUpdate"
   where
-    dbusPP = defaultPP
-               { ppCurrent = (++"/c")
-               , ppVisible = (++"/v")
-               , ppHidden = (++"/h")
-               , ppHiddenNoWindows = (++"/e")
-               , ppUrgent = (++"/u")
-               , ppSep = ";", ppWsSep = ","
-               , ppSort = liftM (namedScratchpadFilterOutWorkspace .) getSortByIndex
-               , ppTitle = id
-               , ppLayout = id
-               }
+    log :: WindowSet -> X [DB.Variant]
+    log ws = do
+      workspaces <- getWorkspaces
+      title <- getTitle
+      return [DB.toVariant (screen, workspaces, layout, title)]
+      where
+        -- current screen
+        screen = screenId . W.screen . W.current $ ws
+        -- workspace list with details
+        getWorkspaces = do
+          idx <- getWsIndex
+          urgs <- readUrgents
+          return . wsUrg urgs . wsSort idx $ wsCurrent : (wsVisible ++ wsHidden)
+        wsCurrent = wsVisInfo (0 :: Int32) . W.current $ ws
+        wsVisible = map (wsVisInfo (1 :: Int32)) . W.visible $ ws
+        wsHidden = map wsHidInfo . namedScratchpadFilterOutWorkspace . W.hidden $ ws
+        wsVisInfo kind w = (W.workspace w, kind, screenId . W.screen $ w)
+        wsHidInfo w = (w, if isNothing . W.stack $ w then 3 else 2 :: Int32, -1 :: Int32)
+        wsSort idx = sortBy (compare `on` idx . wsTag)
+        wsTag (a, _, _) = W.tag a
+        wsUrg urgs = map (\(w, k, s) -> (W.tag w, k, s, any (\x -> maybe False (== W.tag w) (W.findTag x ws)) urgs))
+        -- layout description
+        layout = description . W.layout . W.workspace . W.current $ ws
+        -- current title
+        getTitle = fmap B.pack . maybe (return "") (fmap show . getName) . W.peek $ ws
+        -- helpers
+        screenId :: ScreenId -> Int32
+        screenId (S s) = toEnum s
 
 dbusPost :: DBC.Client -> String -> String -> X ()
-dbusPost c m s = io $ DBC.emit c sig
+dbusPost c m s = dbusPostRaw c m [DB.toVariant . B.pack $ s]
+
+dbusPostRaw :: DBC.Client -> String -> [DB.Variant] -> X ()
+dbusPostRaw client member body = io $ DBC.emit client sig
   where
-    sig = (DB.signal path ifc mem) { DB.signalBody = body }
+    sig = (DB.signal path iface memName) { DB.signalBody = body }
     path = DB.objectPath_ "/fi/zem/xmonad/status"
-    ifc = DB.interfaceName_ "fi.zem.XMonad.Status"
-    mem = DB.memberName_ m
-    body = [DB.toVariant . B.pack $ s]
+    iface = DB.interfaceName_ "fi.zem.XMonad.Status"
+    memName = DB.memberName_ member
 
 -- XClientMessageEvent listener for receiving commands back
 
@@ -121,6 +142,6 @@ myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt
     let arg = (fromIntegral (head dt) :: Int)
         scr = arg `div` 65536
         ws = arg `mod` 65536
-    windows . greedyViewOnScreen (S scr) . marshall (S scr) $ myWorkspaces !! ws
+    windows . greedyViewOnScreen (S scr) $ myWorkspaces !! ws
   return $ All True
 myClientMessageEventHook _ = return $ All True
