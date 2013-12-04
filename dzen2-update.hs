@@ -19,11 +19,6 @@ import Text.Regex.Posix
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import qualified Data.ByteString as B
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Encoding.Error as TEE
-
 import qualified Graphics.X11.Xlib as X
 import qualified Graphics.X11.Xlib.Extras as XE
 import qualified Graphics.X11.Xinerama as XI
@@ -31,14 +26,16 @@ import qualified Graphics.X11.Xinerama as XI
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
+import Zem.StatusUpdate
+
 -- configuration
 
 myDzen2 = "/usr/bin/dzen2"
 
 myColors = Map.fromList
              [ ("default", ("#808080", "#202020"))
-             , ("ws-current", ("#d0d0d0", "#606060"))
-             , ("ws-visible", ("#a0a0a0", "#303030"))
+             , ("ws-own", ("#d0d0d0", "#606060"))
+             , ("ws-other", ("#a0a0a0", "#303030"))
              , ("ws-hidden", ("#909090", "#202020"))
              , ("ws-empty", ("#606060", "#202020"))
              , ("ws-urgent", ("#ffffff", "#700000"))
@@ -58,22 +55,10 @@ color c = Map.findWithDefault ("#ffffff", "#ff0000") c myColors
 
 -- main application
 
-data Event = StatusUpdate (Int32, [(String, Int32, Int32, Bool)], String, B.ByteString)
+data Event = XMonadUpdate StatusUpdate
            | DzenActivity Int String
            | QuitEvent
            deriving Show
-
-data WSType = WSCurrent | WSVisible | WSHidden | WSEmpty
-              deriving (Eq, Ord, Show)
-data WS = WS String WSType Bool
-          deriving (Eq, Show)
-
-wsName :: WS -> String
-wsName (WS name _ _) = name
-wsType :: WS -> WSType
-wsType (WS _ wstype _) = wstype
-wsUrgent :: WS -> Bool
-wsUrgent (WS _ _ urg) = urg
 
 data BarState = BarState {
   barScreenCount :: Int,
@@ -118,7 +103,7 @@ handleEvents chan dzen dpy = do
   where
     handle :: Event -> BarIO ()
     -- status updates from xmonad
-    handle (StatusUpdate msg) = do
+    handle (XMonadUpdate msg) = do
       -- update current state
       oldState <- get
       let (newState, toUpdate) = parseUpdate msg oldState
@@ -154,17 +139,16 @@ handleEvents chan dzen dpy = do
         X.sendEvent dpy rw False X.structureNotifyMask e
         X.sync dpy False
 
-parseUpdate :: (Int32, [(String, Int32, Int32, Bool)], String, B.ByteString) -> BarState -> (BarState, [Int])
-parseUpdate (screen, workspaces, layout, title) oldState =
+parseUpdate :: StatusUpdate -> BarState -> (BarState, [Int])
+parseUpdate (StatusUpdate screen workspaces layout title) oldState =
   let screenList = [0..((barScreenCount oldState) - 1)]
       newActiveScreen = fromEnum screen :: Int
       newWorkspaces = map getWorkspaces screenList
-      newTitle = if B.null title then "" else T.unpack . TE.decodeUtf8With TEE.lenientDecode $ title
       newState = oldState
                    { barActiveScreen = newActiveScreen
                    , barWorkspaces = newWorkspaces
                    , barLayouts = insertTo newActiveScreen layout $ barLayouts oldState
-                   , barTitles = insertTo newActiveScreen newTitle $ barTitles oldState
+                   , barTitles = insertTo newActiveScreen title $ barTitles oldState
                    } in
   (newState,
    findIndices (not . and) . transpose $
@@ -175,15 +159,8 @@ parseUpdate (screen, workspaces, layout, title) oldState =
   where
     getWorkspaces :: Int -> [WS]
     getWorkspaces scr = map (parseWorkspace scr) workspaces
-    parseWorkspace :: Int -> (String, Int32, Int32, Bool) -> WS
-    parseWorkspace scr (tag, kind, wscr, urg) = WS tag (parseWSType kind (scr == fromEnum wscr)) urg
-    parseWSType :: Int32 -> Bool -> WSType
-    parseWSType 0 True = WSCurrent
-    parseWSType 0 False = WSVisible
-    parseWSType 1 True = WSCurrent
-    parseWSType 1 False = WSVisible
-    parseWSType 2 _ = WSHidden
-    parseWSType 3 _ = WSEmpty
+    parseWorkspace :: Int -> (String, WSType, Int, Bool) -> WS
+    parseWorkspace scr (tag, kind, wscr, urg) = WS tag kind (scr == wscr) urg
     insertTo :: Int -> a -> [a] -> [a]
     insertTo at title old =
       let (before, (_:after)) = splitAt at old in
@@ -203,17 +180,19 @@ makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
     sep :: String
     sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
     makeWS :: (Int, WS) -> String
-    makeWS (idx, WS name wtype urg) =
-      dzen2Clickable ("ws" ++ show idx) $ makeName wtype urg $ makeIcon wtype ++ name
+    makeWS (idx, WS name wtype ss urg) =
+      dzen2Clickable ("ws" ++ show idx) $ makeName wtype ss urg $ makeIcon wtype ++ name
     makeIcon :: WSType -> String
     makeIcon WSEmpty = "^ro(6x6)^r(2x0)"
     makeIcon _       = "^r(6x6)^r(2x0)"
-    makeName :: WSType -> Bool -> String -> String
-    makeName _         True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
-    makeName WSCurrent _    = dzen2Color (color "ws-current") . dzen2Gap (2,2)
-    makeName WSVisible _    = dzen2Color (color "ws-visible") . dzen2Gap (2,2)
-    makeName WSHidden  _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
-    makeName WSEmpty   _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
+    makeName :: WSType -> Bool -> Bool -> String -> String
+    makeName _         _     True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
+    makeName WSCurrent True  _    = dzen2Color (color "ws-own") . dzen2Gap (2,2)
+    makeName WSCurrent False _    = dzen2Color (color "ws-other") . dzen2Gap (2,2)
+    makeName WSVisible True  _    = dzen2Color (color "ws-own") . dzen2Gap (2,2)
+    makeName WSVisible False _    = dzen2Color (color "ws-other") . dzen2Gap (2,2)
+    makeName WSHidden  _     _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
+    makeName WSEmpty   _     _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
 
 dzen2Color :: (String, String) -> String -> String
 dzen2Color (fg, bg) str =
@@ -285,8 +264,8 @@ dbusSetupListener eventChan = do
     getMemberName :: DB.Signal -> String
     getMemberName = DB.formatMemberName . DB.signalMember
     handle :: String -> [DB.Variant] -> IO ()
-    handle "StatusUpdate" [body] = case DB.fromVariant body of
-      Just update -> writeChan eventChan . StatusUpdate $ update
+    handle "StatusUpdate" [body] = case unpackUpdate body of
+      Just update -> writeChan eventChan . XMonadUpdate $ update
       Nothing -> return ()
     handle "Shutdown" _ = writeChan eventChan QuitEvent
     barf :: IO ()

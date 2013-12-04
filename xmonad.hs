@@ -22,13 +22,11 @@ import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (ap,liftM,when)
-import qualified Data.ByteString.Char8 as B
 import Data.Function
 import Data.Int
 import Data.List
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Text as T
 import Graphics.X11.ExtraTypes.XF86
 import System.IO
 import System.Process
@@ -36,6 +34,7 @@ import System.Process
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
+import Zem.StatusUpdate
 import Zem.VolumeControl
 
 myModm = mod4Mask
@@ -51,7 +50,7 @@ myKeys conf dbus =
   , ((0, xK_Print), spawn "sleep 0.1; scrot -z -s /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
   , ((myModm, xK_Print), spawn "scrot -z /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
   , ((0, xK_Pause), spawn "xscreensaver-command -lock")
-  , ((myModm, xK_q), dbusPost dbus "Shutdown" "" >> spawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_q), dbusPost dbus "Shutdown" [] >> spawn "xmonad --recompile && xmonad --restart")
   , ((myModm, xK_b), withFocused toggleBorder)
   , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
   , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
@@ -111,13 +110,13 @@ main = do
 -- dbus status update code
 
 myDBusLogHook :: DBC.Client -> X ()
-myDBusLogHook client = withWindowSet log >>= dbusPostRaw client "StatusUpdate"
+myDBusLogHook client = withWindowSet log >>= dbusPost client "StatusUpdate"
   where
     log :: WindowSet -> X [DB.Variant]
     log ws = do
       workspaces <- getWorkspaces
       title <- getTitle
-      return [DB.toVariant (screen, workspaces, layout, title)]
+      return [packUpdate $ StatusUpdate screen workspaces layout title]
       where
         -- current screen
         screen = screenId . W.screen . W.current $ ws
@@ -126,27 +125,24 @@ myDBusLogHook client = withWindowSet log >>= dbusPostRaw client "StatusUpdate"
           idx <- getWsIndex
           urgs <- readUrgents
           return . wsUrg urgs . wsSort idx $ wsCurrent : (wsVisible ++ wsHidden)
-        wsCurrent = wsVisInfo (0 :: Int32) . W.current $ ws
-        wsVisible = map (wsVisInfo (1 :: Int32)) . W.visible $ ws
+        wsCurrent = wsVisInfo WSCurrent . W.current $ ws
+        wsVisible = map (wsVisInfo WSVisible) . W.visible $ ws
         wsHidden = map wsHidInfo . namedScratchpadFilterOutWorkspace . W.hidden $ ws
         wsVisInfo kind w = (W.workspace w, kind, screenId . W.screen $ w)
-        wsHidInfo w = (w, if isNothing . W.stack $ w then 3 else 2 :: Int32, -1 :: Int32)
+        wsHidInfo w = (w, if isNothing . W.stack $ w then WSEmpty else WSHidden, -1)
         wsSort idx = sortBy (compare `on` idx . wsTag)
         wsTag (a, _, _) = W.tag a
         wsUrg urgs = map (\(w, k, s) -> (W.tag w, k, s, any (\x -> maybe False (== W.tag w) (W.findTag x ws)) urgs))
         -- layout description
         layout = description . W.layout . W.workspace . W.current $ ws
         -- current title
-        getTitle = fmap B.pack . maybe (return "") (fmap show . getName) . W.peek $ ws
+        getTitle = maybe (return "") (fmap show . getName) . W.peek $ ws
         -- helpers
-        screenId :: ScreenId -> Int32
+        screenId :: ScreenId -> Int
         screenId (S s) = toEnum s
 
-dbusPost :: DBC.Client -> String -> String -> X ()
-dbusPost c m s = dbusPostRaw c m [DB.toVariant . B.pack $ s]
-
-dbusPostRaw :: DBC.Client -> String -> [DB.Variant] -> X ()
-dbusPostRaw client member body = io $ DBC.emit client sig
+dbusPost :: DBC.Client -> String -> [DB.Variant] -> X ()
+dbusPost client member body = io $ DBC.emit client sig
   where
     sig = (DB.signal path iface memName) { DB.signalBody = body }
     path = DB.objectPath_ "/fi/zem/xmonad/status"
