@@ -59,7 +59,7 @@ myKeys conf dbus =
   ++
   [ ((m .|. myModm, k), windows $ f i)
   | (i, k) <- zip myWorkspaces [xK_1 .. xK_9]
-  , (f, m) <- [(W.view, 0), (W.shift, shiftMask)]
+  , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
 myDmenuRun = withWindowSet (spawn .
