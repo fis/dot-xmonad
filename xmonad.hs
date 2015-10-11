@@ -62,9 +62,12 @@ myKeys conf dbus =
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myDmenuRun = withWindowSet (spawn .
-                            ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
-                            show . fromEnum . W.screen . W.current)
+myDmenuRun = spawn "dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16"
+
+-- Old dmenu_run required an explicit monitor flag:
+-- myDmenuRun = withWindowSet (spawn .
+--                             ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
+--                             show . fromEnum . W.screen . W.current)
 
 myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
   where
@@ -74,7 +77,7 @@ myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hint
     delta      = 3/100
 
 myScratchpads =
-  [ NS "scratchterm" (myTerminal ++ " -name scratchterm") (resource =? "scratchterm") centeredFloating
+  [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
   ]
   where
     centeredFloating = customFloating $ W.RationalRect 0.25 0.25 0.5 0.5
@@ -84,6 +87,7 @@ myManageHook =
              , className =? "Putty" --> doFloat
              , className =? "net-minecraft-MinecraftLauncher" --> doFloat
              , className =? "Xfce4-notifyd" --> doFloat
+             , className =? "Wine" --> doFloat
              , namedScratchpadManageHook myScratchpads
              ]
 
