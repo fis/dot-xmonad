@@ -10,6 +10,8 @@ module Zem.VolumeControl (
   toggleMuteAndNotify
   ) where
 
+import Control.Concurrent
+import Control.Monad
 import Data.Int
 import Data.List
 import Data.Map
@@ -18,8 +20,6 @@ import Data.Time.Clock
 import Data.Typeable
 import Data.Word
 import Sound.ALSA.Mixer
-import Control.Concurrent
-import Control.Monad
 
 import qualified Data.Traversable as T
 
@@ -65,8 +65,10 @@ toggleControlMute ctrl = fmap join $ T.for (playback $ switch ctrl) toggle
 -- volume adjustment of the default/Master control
 
 withMasterControl :: (Control -> IO a) -> a -> IO a
-withMasterControl f def =
-  fmap (fromMaybe def) $ getControlByName "default" "Master" >>= T.traverse f
+withMasterControl f def = withMixer "default" adjustMaster
+  where
+    adjustMaster mixer =
+      fmap (fromMaybe def) $ getControlByName mixer "Master" >>= T.traverse f
 
 getVolumes :: IO (Maybe ([Integer], Integer, Integer))
 getVolumes = withMasterControl getControlVolume Nothing
