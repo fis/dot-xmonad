@@ -1,5 +1,5 @@
 import XMonad
-import XMonad.Core (withWindowSet)
+import XMonad.Core (runQuery,withWindowSet)
 import XMonad.Actions.OnScreen
 import XMonad.Actions.NoBorders
 import XMonad.Config.Desktop
@@ -21,7 +21,7 @@ import XMonad.Util.NamedWindows
 import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.WorkspaceCompare
 
-import Control.Monad (ap,liftM,when)
+import Control.Monad (ap,filterM,liftM,when)
 import Data.Function
 import Data.Int
 import Data.List
@@ -46,6 +46,7 @@ myKeys conf dbus =
   [ ((myModm, xK_Return), spawn myTerminal)
   , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
+  , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
   , ((myModm, xK_r), myDmenuRun)
   , ((0, xK_Print), spawn "sleep 0.1; scrot -z -s /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
   , ((myModm, xK_Print), spawn "scrot -z /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
@@ -69,7 +70,9 @@ myDmenuRun = spawn "dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0
 --                             ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
 --                             show . fromEnum . W.screen . W.current)
 
-myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
+-- smartBorders has issues with window growth, trying life without it:
+-- myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
+myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
   where
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
@@ -78,9 +81,10 @@ myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hint
 
 myScratchpads =
   [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
+  , NS "scratchemacs" "emacsclient -a '' -e '(scratch-frame)'" (resource =? "scratch-emacs") centeredFloating
   ]
   where
-    centeredFloating = customFloating $ W.RationalRect 0.25 0.25 0.5 0.5
+    centeredFloating = customFloating $ W.RationalRect 0.15 0.15 0.7 0.7
 
 myManageHook =
   composeAll [ isFullscreen --> doFullFloat
@@ -164,5 +168,11 @@ myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt
         scr = arg `div` 65536
         ws = arg `mod` 65536
     windows . greedyViewOnScreen (S scr) $ myWorkspaces !! ws
+  a <- io $ internAtom d "XMONAD_NSP_SHOW" False
+  when (mt == a && dt /= []) $ do
+    let (NS name _ query _) = myScratchpads !! (fromIntegral (head dt) :: Int)
+    withWindowSet $ \s -> do
+      current <- filterM (runQuery query) ((maybe [] W.integrate . W.stack . W.workspace . W.current) s)
+      when (null current) $ namedScratchpadAction myScratchpads name
   return $ All True
 myClientMessageEventHook _ = return $ All True
