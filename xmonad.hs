@@ -18,7 +18,7 @@ import qualified XMonad.Util.ExtensibleState as XS
 import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.NamedWindows
-import XMonad.Util.Run (spawnPipe)
+import XMonad.Util.Run (safeSpawn, safeSpawnProg, spawnPipe, unsafeSpawn)
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (ap,filterM,liftM,when)
@@ -28,6 +28,7 @@ import Data.List
 import Data.Maybe
 import Data.Monoid
 import Graphics.X11.ExtraTypes.XF86
+import System.Environment (getEnv)
 import System.IO
 import System.Process
 
@@ -42,16 +43,16 @@ myTerminal = "urxvt"
 
 myWorkspaces = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
 
-myKeys conf dbus =
-  [ ((myModm, xK_Return), spawn myTerminal)
+myKeys conf dbus home =
+  [ ((myModm, xK_Return), safeSpawnProg myTerminal)
   , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
   , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
-  , ((myModm, xK_r), myDmenuRun)
-  , ((0, xK_Print), spawn "sleep 0.1; scrot -z -s /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
-  , ((myModm, xK_Print), spawn "scrot -z /home/fis/img/scrot/scrot-%Y%m%d-%H%M%S.png")
-  , ((0, xK_Pause), spawn "xscreensaver-command -lock")
-  , ((myModm, xK_q), dbusPost dbus "Shutdown" [] >> spawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_r), myRun home)
+  , ((0, xK_Print), unsafeSpawn ("sleep 0.1; scrot -z -s " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
+  , ((myModm, xK_Print), unsafeSpawn ("scrot -z " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
+  , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
+  , ((myModm, xK_q), dbusPost dbus "Shutdown" [] >> unsafeSpawn "xmonad --recompile && xmonad --restart")
   , ((myModm, xK_b), withFocused toggleBorder)
   , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
   , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
@@ -63,12 +64,8 @@ myKeys conf dbus =
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
 
-myDmenuRun = spawn "dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16"
-
--- Old dmenu_run required an explicit monitor flag:
--- myDmenuRun = withWindowSet (spawn .
---                             ("dmenu_run -nb '#202020' -nf '#808080' -sb '#606060' -sf '#d0d0d0' -l 16 -m " ++) .
---                             show . fromEnum . W.screen . W.current)
+myRun :: String -> X ()
+myRun home = safeSpawn (home ++ "/.xmonad/dmenu_run.bash") []
 
 -- smartBorders has issues with window growth, trying life without it:
 -- myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
@@ -98,10 +95,11 @@ myManageHook =
 -- main function
 
 main = do
+  home <- getEnv "HOME"
   -- open the DBus connection for status updates
   dbus <- DBC.connectSession
   -- start dzen2-update if it's not running yet
-  spawn "./.xmonad/dzen2-update"
+  safeSpawn (home ++ "/.xmonad/dzen2-update") []
   -- start XMonad
   let conf = desktopConfig
                { workspaces = myWorkspaces
@@ -113,7 +111,7 @@ main = do
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
                , startupHook = setWMName "LG3D"
                }
-  xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus
+  xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus home
 
 -- dbus status update code
 
