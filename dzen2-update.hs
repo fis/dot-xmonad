@@ -132,7 +132,7 @@ handleEvents chan dzen dpy = do
     update :: Int -> BarIO ()
     update idx = do
       state <- get
-      liftIO $ hPutStrLn (fst (dzen !! idx)) $ makeBar state idx
+      liftIO . hPutStrLn (fst (dzen !! idx)) . show $ makeBar state idx
     -- function to send stuff to running xmonad
     toXMonad :: String -> Int -> IO ()
     toXMonad mtype arg = do
@@ -173,37 +173,37 @@ parseUpdate (StatusUpdate screen workspaces layout title) oldState =
 
 -- status line formatting code
 
-makeBar :: BarState -> Int -> String
-makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
+makeBar :: BarState -> Int -> D2Text
+makeBar state idx = D2T $ workspaces ++ [sep, layout, sep, title]
   where
-    workspaces :: String
-    workspaces = intercalate " " $ map makeWS $ zip [0..] $ barWorkspaces state !! idx
-    layout :: String
+    workspaces :: [D2Text]
+    workspaces = intersperse (D2Raw " ") . map makeWS . zip [0..] $ barWorkspaces state !! idx
+    layout :: D2Text
     layout = dzen2LayoutIcon $ barLayouts state !! idx
-    title :: String
-    title = dzen2Color (color "title") $ barTitles state !! idx
-    sep :: String
-    sep = dzen2Sep 4 myBarHeight
-    makeWS :: (Int, WS) -> String
+    title :: D2Text
+    title = D2Color (color "title") . D2Lit $ barTitles state !! idx
+    sep :: D2Text
+    sep = D2Sep 4 myBarHeight
+    makeWS :: (Int, WS) -> D2Text
     makeWS (idx, WS name wtype ss urg) =
-      dzen2Clickable ("ws" ++ show idx) $ makeName wtype ss urg $ makeIcon wtype ++ name
-    makeIcon :: WSType -> String
-    makeIcon WSEmpty = "^ro(6x6)^r(2x0)"
-    makeIcon _       = "^r(6x6)^r(2x0)"
-    makeName :: WSType -> Bool -> Bool -> String -> String
-    makeName _         _     True = dzen2Color (color "ws-urgent") . dzen2Gap (2,2)
-    makeName WSCurrent True  _    = dzen2Color (color "ws-own") . dzen2Gap (2,2)
-    makeName WSCurrent False _    = dzen2Color (color "ws-other") . dzen2Gap (2,2)
-    makeName WSVisible True  _    = dzen2Color (color "ws-own") . dzen2Gap (2,2)
-    makeName WSVisible False _    = dzen2Color (color "ws-other") . dzen2Gap (2,2)
-    makeName WSHidden  _     _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
-    makeName WSEmpty   _     _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
+      D2Clickable ("ws" ++ show idx) . makeName wtype ss urg . D2Gap 2 $ D2T [makeIcon wtype, D2Lit name]
+    makeIcon :: WSType -> D2Text
+    makeIcon WSEmpty = D2Raw "^ro(6x6)^r(2x0)"
+    makeIcon _       = D2Raw "^r(6x6)^r(2x0)"
+    makeName :: WSType -> Bool -> Bool -> D2Text -> D2Text
+    makeName _         _     True = D2Color (color "ws-urgent")
+    makeName WSCurrent True  _    = D2Color (color "ws-own")
+    makeName WSCurrent False _    = D2Color (color "ws-other")
+    makeName WSVisible True  _    = D2Color (color "ws-own")
+    makeName WSVisible False _    = D2Color (color "ws-other")
+    makeName WSHidden  _     _    = D2Color (color "ws-hidden")
+    makeName WSEmpty   _     _    = D2Color (color "ws-empty")
 
-dzen2LayoutIcon :: String -> String
-dzen2LayoutIcon "Tall" = "◧"
-dzen2LayoutIcon "Wide" = "⬒"
-dzen2LayoutIcon "Full" = "^ro(12x12)"
-dzen2LayoutIcon str = str
+dzen2LayoutIcon :: String -> D2Text
+dzen2LayoutIcon "Tall" = D2Raw "◧"
+dzen2LayoutIcon "Wide" = D2Raw "⬒"
+dzen2LayoutIcon "Full" = D2Raw "^ro(12x12)"
+dzen2LayoutIcon str = D2Lit str
 
 -- dbus event listening code
 

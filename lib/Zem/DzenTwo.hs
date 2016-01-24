@@ -1,8 +1,5 @@
 module Zem.DzenTwo
-  ( dzen2Clickable
-  , dzen2Color
-  , dzen2Gap
-  , dzen2Sep
+  ( D2Text(..)
   , readDzen2
   , startDzen2
   ) where
@@ -12,22 +9,34 @@ import Control.Monad
 import System.IO
 import System.Process
 
--- dzen2 formatting helpers
+-- dzen2 formatting language
 
-dzen2Clickable :: String -> String -> String
-dzen2Clickable name str =
-  "^ca(1, echo m1" ++ name ++ ")" ++ str ++ "^ca()"
+data D2Text =
+  D2T [D2Text]
+  | D2Lit String
+  | D2Raw String
+  | D2Color (String, String) D2Text
+  | D2Clickable String D2Text
+  | D2Gap Int D2Text
+  | D2Sep Int Int
 
-dzen2Color :: (String, String) -> String -> String
-dzen2Color (fg, bg) str =
-  "^fg(" ++ fg ++ ")^bg(" ++ bg ++ ")" ++ str ++ "^fg()^bg()"
+instance Show D2Text where
+  show (D2T chunks) = concat $ map show chunks
+  show (D2Lit body) = dzen2Escape body
+  show (D2Raw body) = body
+  show (D2Color (fg, bg) body) =
+    "^fg(" ++ fg ++ ")^bg(" ++ bg ++ ")" ++ show body ++ "^fg()^bg()"
+  show (D2Clickable name body) =
+    "^ca(1, echo m1" ++ name ++ ")" ++ show body ++ "^ca()"
+  show (D2Gap w body) =
+    "^r(+" ++ show w ++ "x0)" ++ show body ++ "^r(+" ++ show w ++ "x0)"
+  show (D2Sep w h) =
+    "^p(+" ++ show w ++ ")^r(1x" ++ show h ++ ")^p(+" ++ show w ++ ")"
 
-dzen2Gap :: (Int, Int) -> String -> String
-dzen2Gap (front, back) str =
-  "^r(+" ++ show front ++ "x0)" ++ str ++ "^r(+" ++ show back ++ "x0)"
-
-dzen2Sep :: Int -> Int -> String
-dzen2Sep space height = "^p(+" ++ show space ++ ")^r(1x" ++ show height ++ ")^p(+" ++ show space ++ "4)"
+dzen2Escape :: String -> String
+dzen2Escape ('^':rest) = '^' : '^' : dzen2Escape rest
+dzen2Escape (c:rest) = c : dzen2Escape rest
+dzen2Escape [] = []
 
 -- dzen2 process management
 
@@ -53,11 +62,3 @@ readDzen2 h callback = do _ <- forkIO $ forever read; return ()
   where
     read :: IO ()
     read = hGetLine h >>= callback
-
--- readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
--- readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
---   where
---     read :: IO ()
---     read = do
---       msg <- hGetLine h
---       writeChan eventChan $ DzenActivity n msg
