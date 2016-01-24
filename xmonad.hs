@@ -52,7 +52,7 @@ myKeys conf dbus home =
   , ((0, xK_Print), unsafeSpawn ("sleep 0.1; scrot -z -s " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
   , ((myModm, xK_Print), unsafeSpawn ("scrot -z " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
   , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
-  , ((myModm, xK_q), dbusPost dbus "Shutdown" [] >> unsafeSpawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_q), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn "xmonad --recompile && xmonad --restart")
   , ((myModm, xK_b), withFocused toggleBorder)
   , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
   , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
@@ -116,13 +116,13 @@ main = do
 -- dbus status update code
 
 myDBusLogHook :: DBC.Client -> X ()
-myDBusLogHook client = withWindowSet log >>= dbusPost client "StatusUpdate"
+myDBusLogHook client = withWindowSet log >>= io . postStatusUpdate client
   where
-    log :: WindowSet -> X [DB.Variant]
+    log :: WindowSet -> X StatusUpdate
     log ws = do
       workspaces <- getWorkspaces
       title <- getTitle
-      return [packUpdate $ StatusUpdate screen workspaces layout title]
+      return $ StatusUpdate screen workspaces layout title
       where
         -- current screen
         screen = screenId . W.screen . W.current $ ws
@@ -146,14 +146,6 @@ myDBusLogHook client = withWindowSet log >>= dbusPost client "StatusUpdate"
         -- helpers
         screenId :: ScreenId -> Int
         screenId (S s) = toEnum s
-
-dbusPost :: DBC.Client -> String -> [DB.Variant] -> X ()
-dbusPost client member body = io $ DBC.emit client sig
-  where
-    sig = (DB.signal path iface memName) { DB.signalBody = body }
-    path = DB.objectPath_ "/fi/zem/xmonad/status"
-    iface = DB.interfaceName_ "fi.zem.XMonad.Status"
-    memName = DB.memberName_ member
 
 -- XClientMessageEvent listener for receiving commands back
 

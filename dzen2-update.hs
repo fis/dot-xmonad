@@ -13,7 +13,6 @@ import Data.Maybe
 import Data.Word
 import System.Exit
 import System.IO
-import System.Process
 import Text.Regex.Posix
 
 import Data.Map (Map)
@@ -26,6 +25,7 @@ import qualified Graphics.X11.Xinerama as XI
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
+import Zem.DzenTwo
 import Zem.StatusUpdate
 
 -- configuration
@@ -82,11 +82,16 @@ main = do
   -- set up DBus listener to feed the event channel
   dbusSetupListener eventChan
   -- start a dzen2 process for each screen, fork a thread to get events
-  dzenHandles <- mapM startDzen2 screens
-  mapM_ (readDzen2 eventChan) $ zip [0..] dzenHandles
+  dzenHandles <- mapM startBar screens
+  mapM_ (readBar eventChan) $ zip [0..] dzenHandles
   -- handle events until the end
   evalStateT (forever $ handleEvents eventChan dzenHandles dpy) $ initState screens
   where
+    startBar :: ((Int,Int),(Int,Int)) -> IO (Handle, Handle)
+    startBar ((x, y), (w, _)) =
+      startDzen2 myDzen2 ((x, y), (w, myBarHeight)) (color "default") myFont
+    readBar :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
+    readBar eventChan (n, (_, h)) = readDzen2 h $ writeChan eventChan . DzenActivity n
     initState :: [((Int,Int),(Int,Int))] -> BarState
     initState screens = BarState {
       barScreenCount = length screens,
@@ -178,7 +183,7 @@ makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
     title :: String
     title = dzen2Color (color "title") $ barTitles state !! idx
     sep :: String
-    sep = "^p(+4)^r(1x" ++ show myBarHeight ++ ")^p(+4)"
+    sep = dzen2Sep 4 myBarHeight
     makeWS :: (Int, WS) -> String
     makeWS (idx, WS name wtype ss urg) =
       dzen2Clickable ("ws" ++ show idx) $ makeName wtype ss urg $ makeIcon wtype ++ name
@@ -194,82 +199,22 @@ makeBar state idx = workspaces ++ sep ++ layout ++ sep ++ title
     makeName WSHidden  _     _    = dzen2Color (color "ws-hidden") . dzen2Gap (2,2)
     makeName WSEmpty   _     _    = dzen2Color (color "ws-empty") . dzen2Gap (2,2)
 
-dzen2Color :: (String, String) -> String -> String
-dzen2Color (fg, bg) str =
-  "^fg(" ++ fg ++ ")^bg(" ++ bg ++ ")" ++ str ++ "^fg()^bg()"
-
-dzen2Gap :: (Int, Int) -> String -> String
-dzen2Gap (front, back) str =
-  "^r(+" ++ show front ++ "x0)" ++ str ++ "^r(+" ++ show back ++ "x0)"
-
-dzen2Clickable :: String -> String -> String
-dzen2Clickable name str =
-  "^ca(1, echo m1" ++ name ++ ")" ++ str ++ "^ca()"
-
 dzen2LayoutIcon :: String -> String
 dzen2LayoutIcon "Tall" = "◧"
 dzen2LayoutIcon "Wide" = "⬒"
 dzen2LayoutIcon "Full" = "^ro(12x12)"
 dzen2LayoutIcon str = str
 
--- dzen2 process handling code
-
-startDzen2 :: ((Int,Int),(Int,Int)) -> IO (Handle, Handle)
-startDzen2 ((xpos,ypos), (width,_)) = do
-  (inp, out, _, _) <- runInteractiveProcess myDzen2 args Nothing Nothing
-  hSetBuffering inp LineBuffering
-  hSetBuffering out LineBuffering
-  hPutStrLn inp "(dzen2)"
-  return (inp, out)
-  where
-    args :: [String]
-    args =
-      let (fg, bg) = color "default" in
-      ["-ta", "l",
-       "-x", show xpos, "-y", show ypos, "-w", show width, "-h", show myBarHeight,
-       "-fg", fg, "-bg", bg,
-       "-fn", myFont,
-       "-e", "button3=print:m3"
-      ]
-
-readDzen2 :: Chan Event -> (Int, (Handle, Handle)) -> IO ()
-readDzen2 eventChan (n, (_, h)) = do _ <- forkIO $ forever read; return ()
-  where
-    read :: IO ()
-    read = do
-      msg <- hGetLine h
-      writeChan eventChan $ DzenActivity n msg
-
 -- dbus event listening code
 
 dbusSetupListener :: Chan Event -> IO ()
-dbusSetupListener eventChan = do
-  -- connect to session bus
-  dbus <- DBC.connect . fromJust =<< DB.getSessionAddress
-  -- make sure we're the only instance of dzen2-update running
-  nameReply <- DBC.requestName dbus ourName [DBC.nameDoNotQueue]
-  case nameReply of
-    DBC.NamePrimaryOwner -> DBC.listen dbus match callback
-    _                    -> barf
+dbusSetupListener eventChan = listenStatus handle
   where
-    ourName :: DB.BusName
-    ourName = DB.busName_ "fi.zem.XMonad.Dzen2Update"
-    match :: DBC.MatchRule
-    match = DBC.matchAny {
-      DBC.matchPath = DB.parseObjectPath "/fi/zem/xmonad/status",
-      DBC.matchInterface = DB.parseInterfaceName "fi.zem.XMonad.Status"
-      }
-    callback :: DB.Signal -> IO ()
-    callback sig = handle (getMemberName sig) (DB.signalBody sig)
-    getMemberName :: DB.Signal -> String
-    getMemberName = DB.formatMemberName . DB.signalMember
     handle :: String -> [DB.Variant] -> IO ()
     handle "StatusUpdate" [body] = case unpackUpdate body of
       Just update -> writeChan eventChan . XMonadUpdate $ update
       Nothing -> return ()
     handle "Shutdown" _ = writeChan eventChan QuitEvent
-    barf :: IO ()
-    barf = putStrLn "dzen2-update already running" >> exitFailure
 
 -- xinerama screen query
 
