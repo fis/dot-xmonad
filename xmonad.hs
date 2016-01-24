@@ -1,7 +1,8 @@
 import XMonad
 import XMonad.Core (runQuery,withWindowSet)
-import XMonad.Actions.OnScreen
 import XMonad.Actions.NoBorders
+import XMonad.Actions.OnScreen
+import XMonad.Actions.PhysicalScreens
 import XMonad.Config.Desktop
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
@@ -62,6 +63,11 @@ myKeys conf dbus home =
   [ ((m .|. myModm, k), windows $ f i)
   | (i, k) <- zip myWorkspaces [xK_1 .. xK_9]
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
+  ]
+  ++
+  [ ((m .|. myModm, k), f sc)
+  | (sc, k) <- zip [0..] [xK_w, xK_e]
+  , (f, m) <- [(viewScreen, 0), (sendToScreen, shiftMask)]
   ]
 
 myRun :: String -> X ()
