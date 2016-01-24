@@ -30,7 +30,7 @@ import Zem.StatusUpdate
 
 -- configuration
 
-myDzen2 = "/usr/bin/dzen2"
+myDzen2 = "dzen2"
 
 myColors = Map.fromList
              [ ("default", ("#808080", "#202020"))
