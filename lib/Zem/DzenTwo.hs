@@ -58,7 +58,7 @@ startDzen2 bin ((x, y), (w, h)) (fg, bg) font = do
       ]
 
 readDzen2 :: Handle -> (String -> IO ()) -> IO ()
-readDzen2 h callback = do _ <- forkIO $ forever read; return ()
+readDzen2 h callback = forkIO (forever read) >> return ()
   where
     read :: IO ()
     read = hGetLine h >>= callback
