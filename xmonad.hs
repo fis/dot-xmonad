@@ -37,6 +37,7 @@ import qualified DBus as DB
 import qualified DBus.Client as DBC
 
 import Zem.StatusUpdate
+import Zem.Utils
 import Zem.VolumeControl
 
 myModm = mod4Mask
@@ -90,7 +91,8 @@ myScratchpads =
     centeredFloating = customFloating $ W.RationalRect 0.15 0.15 0.7 0.7
 
 myManageHook =
-  composeAll [ isFullscreen --> doFullFloat
+  composeAll [ manageAndroidStudioPopups
+             , isFullscreen --> doFullFloat
              , className =? "Putty" --> doFloat
              , className =? "net-minecraft-MinecraftLauncher" --> doFloat
              , className =? "Xfce4-notifyd" --> doFloat
