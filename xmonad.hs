@@ -1,39 +1,28 @@
 import XMonad
-import XMonad.Core (runQuery,withWindowSet)
 import XMonad.Actions.NoBorders
 import XMonad.Actions.OnScreen
 import XMonad.Actions.PhysicalScreens
 import XMonad.Config.Desktop
-import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
-import XMonad.Hooks.ICCCMFocus
-import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
-import XMonad.Hooks.SetWMName
 import XMonad.Hooks.UrgencyHook
 import qualified XMonad.Layout.HintedTile as HT
-import XMonad.Layout.LayoutHints
 import XMonad.Layout.NoBorders
 import qualified XMonad.StackSet as W
-import qualified XMonad.Util.ExtensibleState as XS
 import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.NamedWindows
-import XMonad.Util.Run (safeSpawn, safeSpawnProg, spawnPipe, unsafeSpawn)
+import XMonad.Util.Run (safeSpawn, safeSpawnProg, unsafeSpawn)
 import XMonad.Util.WorkspaceCompare
 
-import Control.Monad (ap,filterM,liftM,when)
+import Control.Monad (filterM, when)
 import Data.Function
-import Data.Int
 import Data.List
 import Data.Maybe
 import Data.Monoid
 import Graphics.X11.ExtraTypes.XF86
 import System.Environment (getEnv)
-import System.IO
-import System.Process
 
-import qualified DBus as DB
 import qualified DBus.Client as DBC
 
 import Zem.StatusUpdate
@@ -115,9 +104,10 @@ main = do
                , terminal = myTerminal
                , layoutHook = myLayouts
                , manageHook = myManageHook <+> manageHook desktopConfig
-               , logHook = myDBusLogHook dbus >> takeTopFocus >> logHook desktopConfig
+               , logHook = myDBusLogHook dbus >> logHook desktopConfig
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
-               , startupHook = setWMName "LG3D"
+               -- This should in theory be no longer necessary: (TODO: cleanup)
+               -- , startupHook = setWMName "LG3D"
                }
   xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus home
 

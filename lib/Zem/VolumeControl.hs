@@ -10,7 +10,6 @@ module Zem.VolumeControl (
   toggleMuteAndNotify
   ) where
 
-import Control.Concurrent
 import Control.Monad
 import Data.Int
 import Data.List
