@@ -6,8 +6,11 @@ import XMonad.Config.Desktop
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.UrgencyHook
+import XMonad.Hooks.SetWMName
 import qualified XMonad.Layout.HintedTile as HT
+import XMonad.Layout.Gaps
 import XMonad.Layout.NoBorders
+import XMonad.Layout.PerScreen (ifWider)
 import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
@@ -64,9 +67,15 @@ myRun :: String -> X ()
 myRun home = safeSpawn (home ++ "/.xmonad/dmenu_run.bash") []
 
 -- smartBorders has issues with window growth, trying life without it:
--- myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
-myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
+-- old: myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
+-- desktopLayoutModifiers == avoidStruts, and that has Chromium issues:
+--  https://bugs.chromium.org/p/chromium/issues/detail?id=510079
+--  https://github.com/xmonad/xmonad-contrib/issues/73
+-- trying with manual gaps instead
+-- old: myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
+myLayouts = ifWider 1600 (gaps [(U, 20), (D, 30)] defaults) (gaps [(U, 20)] defaults) ||| noBorders Full
   where
+    defaults   = hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full
     hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
     nmaster    = 1
     ratio      = 1/2
@@ -107,7 +116,7 @@ main = do
                , logHook = myDBusLogHook dbus >> logHook desktopConfig
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
                -- This should in theory be no longer necessary: (TODO: cleanup)
-               -- , startupHook = setWMName "LG3D"
+               , startupHook = setWMName "LG3D"
                }
   xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus home
 
