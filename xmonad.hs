@@ -1,4 +1,5 @@
 import XMonad
+import XMonad.Actions.Navigation2D
 import XMonad.Actions.NoBorders
 import XMonad.Actions.OnScreen
 import XMonad.Actions.PhysicalScreens
@@ -66,6 +67,16 @@ myKeys conf dbus home =
 myRun :: String -> X ()
 myRun home = safeSpawn (home ++ "/.xmonad/dmenu_run.bash") []
 
+myNavigation2DConfig = def { layoutNavigation   = [("Full", centerNavigation)]
+                           , unmappedWindowRect = [("Full", singleWindowRect)]
+                           }
+myNavigation2D =
+  navigation2D myNavigation2DConfig
+               (xK_Up, xK_Left, xK_Down, xK_Right)
+               [(myModm, windowGo),
+                (myModm .|. shiftMask, windowSwap)]
+               False
+
 -- smartBorders has issues with window growth, trying life without it:
 -- old: myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
 -- desktopLayoutModifiers == avoidStruts, and that has Chromium issues:
@@ -115,10 +126,9 @@ main = do
                , manageHook = myManageHook <+> manageHook desktopConfig
                , logHook = myDBusLogHook dbus >> logHook desktopConfig
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
-               -- This should in theory be no longer necessary: (TODO: cleanup)
                , startupHook = setWMName "LG3D"
                }
-  xmonad $ (withUrgencyHook NoUrgencyHook conf) `additionalKeys` myKeys conf dbus home
+  xmonad . myNavigation2D . (`additionalKeys` myKeys conf dbus home) . withUrgencyHook NoUrgencyHook $ conf
 
 -- dbus status update code
 
