@@ -6,6 +6,7 @@ import XMonad.Actions.NoBorders
 import XMonad.Actions.OnScreen
 import XMonad.Actions.PhysicalScreens
 import XMonad.Actions.Submap
+import XMonad.Actions.Warp
 import XMonad.Config.Desktop
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageHelpers
@@ -28,6 +29,7 @@ import Data.Function
 import Data.List
 import Data.Maybe
 import Data.Monoid
+import Data.Ratio
 import Graphics.X11.ExtraTypes.XF86
 import System.Environment (getEnv)
 import System.Exit
@@ -77,11 +79,20 @@ myKeys conf dbus home =
   ++
   [ ((m .|. myModm, k), f sc)
   | (sc, k) <- zip [0..] [xK_w, xK_e]
-  , (f, m) <- [(viewScreen, 0), (sendToScreen, shiftMask)]
+  , (f, m) <- [(mySwitchScreen, 0), (sendToScreen, shiftMask)]
   ]
 
 myRun :: String -> X ()
 myRun home = safeSpawn (home ++ "/.xmonad/dmenu_run.bash") []
+
+mySwitchScreen :: PhysicalScreen -> X ()
+mySwitchScreen p = do
+  msc <- getScreen p
+  whenJust msc $ \sc -> do
+    ws <- gets windowset
+    if W.screen (W.current ws) /= sc
+      then viewScreen p
+      else warpToScreen sc (1 % 2) (1 % 2)
 
 myNavigation2DConfig = def { layoutNavigation   = [("Full", centerNavigation)]
                            , unmappedWindowRect = [("Full", singleWindowRect)]
