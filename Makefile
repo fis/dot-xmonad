@@ -2,8 +2,8 @@
 
 all: xmonad-x86_64-linux dzen2-update
 
-xmonad-x86_64-linux: xmonad.hs lib/Zem/StatusUpdate.hs lib/Zem/VolumeControl.hs
-	xmonad --recompile
+xmonad-x86_64-linux: xmonad.hs lib/Zem/StatusUpdate.hs lib/Zem/Utils.hs lib/Zem/VolumeControl.hs lib/Zem/XkbSwitch.hs
+	ghc --make xmonad.hs -ilib -fforce-recomp -lxklavier -o $@
 
 dzen2-update: dzen2-update.hs lib/Zem/DzenTwo.hs lib/Zem/StatusUpdate.hs
-	ghc -ilib --make dzen2-update
+	ghc --make $@ -ilib

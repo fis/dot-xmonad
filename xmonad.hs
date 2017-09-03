@@ -1,14 +1,18 @@
+{-# OPTIONS_GHC -lxklavier #-}
+
 import XMonad
 import XMonad.Actions.Navigation2D
 import XMonad.Actions.NoBorders
 import XMonad.Actions.OnScreen
 import XMonad.Actions.PhysicalScreens
+import XMonad.Actions.Submap
 import XMonad.Config.Desktop
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.UrgencyHook
 import XMonad.Hooks.SetWMName
-import qualified XMonad.Layout.HintedTile as HT
+import XMonad.Layout.BinarySpacePartition
+import XMonad.Layout.BorderResize
 import XMonad.Layout.Gaps
 import XMonad.Layout.NoBorders
 import XMonad.Layout.PerScreen (ifWider)
@@ -26,12 +30,15 @@ import Data.Maybe
 import Data.Monoid
 import Graphics.X11.ExtraTypes.XF86
 import System.Environment (getEnv)
+import System.Exit
 
+import qualified Data.Map as M
 import qualified DBus.Client as DBC
 
 import Zem.StatusUpdate
 import Zem.Utils
 import Zem.VolumeControl
+import Zem.XkbSwitch
 
 myModm = mod4Mask
 myTerminal = "urxvt"
@@ -41,14 +48,23 @@ myWorkspaces = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
 myKeys conf dbus home =
   [ ((myModm, xK_Return), safeSpawnProg myTerminal)
   , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
+  , ((myModm, xK_q), sendMessage Equalize)
+  , ((myModm .|. shiftMask, xK_q), sendMessage Balance)
+  , ((myModm, xK_f), sendMessage Rotate)
+  , ((myModm, xK_p), sendMessage FocusParent)
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
   , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
   , ((myModm, xK_r), myRun home)
   , ((0, xK_Print), unsafeSpawn ("sleep 0.1; scrot -z -s " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
   , ((myModm, xK_Print), unsafeSpawn ("scrot -z " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
   , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
-  , ((myModm, xK_q), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn "xmonad --recompile && xmonad --restart")
+  , ((myModm, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("make -C " ++ home ++ "/.xmonad && xmonad --restart"))
+  , ((myModm .|. shiftMask, xK_x), io (exitWith ExitSuccess))
   , ((myModm, xK_b), withFocused toggleBorder)
+  , ((myModm, xK_l), submap . M.fromList $
+      [ ((0, xK_1), switchKeyboardLayout 0)
+      , ((0, xK_2), switchKeyboardLayout 1)
+      ])
   , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
   , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
   , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
@@ -77,20 +93,9 @@ myNavigation2D =
                 (myModm .|. shiftMask, windowSwap)]
                False
 
--- smartBorders has issues with window growth, trying life without it:
--- old: myLayouts = (smartBorders . desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
--- desktopLayoutModifiers == avoidStruts, and that has Chromium issues:
---  https://bugs.chromium.org/p/chromium/issues/detail?id=510079
---  https://github.com/xmonad/xmonad-contrib/issues/73
--- trying with manual gaps instead
--- old: myLayouts = (desktopLayoutModifiers $ hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full) ||| noBorders Full
 myLayouts = ifWider 1600 (gaps [(U, 20), (D, 30)] defaults) (gaps [(U, 20)] defaults) ||| noBorders Full
   where
-    defaults   = hintedTile HT.Tall ||| hintedTile HT.Wide ||| Full
-    hintedTile = HT.HintedTile nmaster delta ratio HT.TopLeft
-    nmaster    = 1
-    ratio      = 1/2
-    delta      = 3/100
+    defaults = borderResize emptyBSP
 
 myScratchpads =
   [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating

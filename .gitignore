@@ -1,0 +1,4 @@
+*.hi
+*.o
+/dzen2-update
+/xmonad-x86_64-linux
