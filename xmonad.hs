@@ -53,6 +53,7 @@ myKeys conf dbus home =
   , ((myModm, xK_q), sendMessage Equalize)
   , ((myModm .|. shiftMask, xK_q), sendMessage Balance)
   , ((myModm, xK_f), sendMessage Rotate)
+  , ((myModm .|. shiftMask, xK_f), sendMessage Swap)
   , ((myModm, xK_p), sendMessage FocusParent)
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
   , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
