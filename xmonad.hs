@@ -106,9 +106,9 @@ myNavigation2D =
                 (myModm .|. shiftMask, windowSwap)]
                False
 
-myLayouts = ifWider 1600 (gaps [(U, 20), (D, 30)] defaults) (gaps [(U, 20)] defaults) ||| noBorders Full
+myLayouts = (smartBorders . gapped . borderResize $ emptyBSP) ||| noBorders Full
   where
-    defaults = borderResize emptyBSP
+    gapped l = ifWider 1600 (gaps [(U, 20), (D, 30)] l) (gaps [(U, 20)] l)
 
 myScratchpads =
   [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
