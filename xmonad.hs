@@ -22,6 +22,7 @@ import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.NamedWindows
 import XMonad.Util.Run (safeSpawn, safeSpawnProg, unsafeSpawn)
+import XMonad.Util.Ungrab
 import XMonad.Util.WorkspaceCompare
 
 import Control.Monad (filterM, when)
@@ -58,8 +59,8 @@ myKeys conf dbus home =
   , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
   , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
   , ((myModm, xK_r), myRun home)
-  , ((0, xK_Print), unsafeSpawn ("sleep 0.1; scrot -z -s " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
-  , ((myModm, xK_Print), unsafeSpawn ("scrot -z " ++ home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"))
+  , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
+  , ((myModm, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
   , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
   , ((myModm, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("make -C " ++ home ++ "/.xmonad && xmonad --restart"))
   , ((myModm .|. shiftMask, xK_x), io (exitWith ExitSuccess))
