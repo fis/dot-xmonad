@@ -49,6 +49,6 @@ addNetSupported keys = do
   aAtom <- getAtom "ATOM"
   aSup <- getAtom "_NET_SUPPORTED"
   propSup <- fmap concat . io $ getWindowProperty32 dpy aSup root
-  forM_ aKeys $ \a ->
-    when (fromIntegral a `notElem` propSup) $
-      io $ changeProperty32 dpy root aSup aAtom propModeAppend [fromIntegral a]
+  let newKeys = filter (`notElem` propSup) . map fromIntegral $ aKeys
+  when (not . null $ newKeys) $
+    io $ changeProperty32 dpy root aSup aAtom propModeAppend newKeys
