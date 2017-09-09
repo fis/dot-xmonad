@@ -144,7 +144,7 @@ main = do
                , manageHook = myManageHook <+> manageHook desktopConfig
                , logHook = myDBusLogHook dbus >> logHook desktopConfig
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
-               , startupHook = setWMName "LG3D"
+               , startupHook = setWMName "LG3D" >> addNetSupported ["_NET_WM_STATE", "_NET_WM_STATE_FULLSCREEN"]
                }
   xmonad . myNavigation2D . (`additionalKeys` myKeys conf dbus home) . withUrgencyHook NoUrgencyHook $ conf
 
