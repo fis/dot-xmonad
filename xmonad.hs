@@ -9,12 +9,12 @@ import XMonad.Actions.Submap
 import XMonad.Actions.Warp
 import XMonad.Config.Desktop
 import XMonad.Hooks.EwmhDesktops
+import XMonad.Hooks.ManageDocks (avoidStruts, docks)
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.UrgencyHook
 import XMonad.Hooks.SetWMName
 import XMonad.Layout.BinarySpacePartition
 import XMonad.Layout.BorderResize
-import XMonad.Layout.Gaps
 import XMonad.Layout.NoBorders
 import XMonad.Layout.PerScreen (ifWider)
 import qualified XMonad.StackSet as W
@@ -106,9 +106,7 @@ myNavigation2D =
                 (myModm .|. shiftMask, windowSwap)]
                False
 
-myLayouts = (smartBorders . gapped . borderResize $ emptyBSP) ||| noBorders Full
-  where
-    gapped l = ifWider 1600 (gaps [(U, 20), (D, 30)] l) (gaps [(U, 20)] l)
+myLayouts = (borderResize . smartBorders . avoidStruts $ emptyBSP) ||| noBorders Full
 
 myScratchpads =
   [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
@@ -146,7 +144,7 @@ main = do
                , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
                , startupHook = setWMName "LG3D" >> addNetSupported ["_NET_WM_STATE", "_NET_WM_STATE_FULLSCREEN"]
                }
-  xmonad . myNavigation2D . (`additionalKeys` myKeys conf dbus home) . withUrgencyHook NoUrgencyHook $ conf
+  xmonad . myNavigation2D . (`additionalKeys` myKeys conf dbus home) . withUrgencyHook NoUrgencyHook . docks $ conf
 
 -- dbus status update code
 

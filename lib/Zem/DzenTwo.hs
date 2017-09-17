@@ -50,7 +50,8 @@ startDzen2 bin ((x, y), (w, h)) (fg, bg) font = do
   where
     args :: [String]
     args =
-      ["-ta", "l",
+      ["-dock",
+       "-ta", "l",
        "-x", show x, "-y", show y, "-w", show w, "-h", show h,
        "-fg", fg, "-bg", bg,
        "-fn", font,
