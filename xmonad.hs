@@ -2,70 +2,74 @@
 
 import XMonad
 import XMonad.Actions.Navigation2D
-import XMonad.Actions.NoBorders
-import XMonad.Actions.OnScreen
-import XMonad.Actions.PhysicalScreens
-import XMonad.Actions.Submap
-import XMonad.Actions.Warp
-import XMonad.Config.Desktop
-import XMonad.Hooks.EwmhDesktops
+  (centerNavigation, layoutNavigation, navigation2D, singleWindowRect, windowGo, windowSwap, unmappedWindowRect)
+import XMonad.Actions.NoBorders (toggleBorder)
+import XMonad.Actions.OnScreen (greedyViewOnScreen)
+import XMonad.Actions.PhysicalScreens (PhysicalScreen, getScreen, sendToScreen, viewScreen)
+import XMonad.Actions.Submap (submap)
+import XMonad.Actions.Warp (warpToScreen)
+import XMonad.Hooks.EwmhDesktops (ewmh, fullscreenEventHook)
 import XMonad.Hooks.ManageDocks (avoidStruts, docks)
-import XMonad.Hooks.ManageHelpers
-import XMonad.Hooks.UrgencyHook
-import XMonad.Hooks.SetWMName
-import XMonad.Layout.BinarySpacePartition
-import XMonad.Layout.BorderResize
-import XMonad.Layout.NoBorders
+import XMonad.Hooks.ManageHelpers (isFullscreen, doFullFloat)
+import XMonad.Hooks.UrgencyHook (NoUrgencyHook(..), readUrgents, withUrgencyHook)
+import XMonad.Hooks.SetWMName (setWMName)
+import XMonad.Layout.BinarySpacePartition (FocusParent(..), TreeBalance(..), Rotate(..), Swap(..), emptyBSP)
+import XMonad.Layout.BorderResize (borderResize)
+import XMonad.Layout.NoBorders (noBorders, smartBorders)
 import XMonad.Layout.PerScreen (ifWider)
-import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
-import XMonad.Util.NamedWindows
+  (NamedScratchpad(NS), customFloating, namedScratchpadAction, namedScratchpadFilterOutWorkspace, namedScratchpadManageHook)
+import XMonad.Util.NamedWindows (getName)
 import XMonad.Util.Run (safeSpawn, safeSpawnProg, unsafeSpawn)
-import XMonad.Util.Ungrab
-import XMonad.Util.WorkspaceCompare
+import XMonad.Util.Ungrab (unGrab)
+import XMonad.Util.WorkspaceCompare (getWsIndex)
+
+import qualified XMonad.StackSet as W
 
 import Control.Monad (filterM, when)
-import Data.Function
-import Data.List
-import Data.Maybe
-import Data.Monoid
-import Data.Ratio
-import Graphics.X11.ExtraTypes.XF86
+import Data.Function (on)
+import Data.List (sortBy)
+import Data.Maybe (isNothing)
+import Data.Monoid (All(..))
+import Data.Ratio ((%))
+import Graphics.X11.ExtraTypes.XF86 (xF86XK_AudioLowerVolume, xF86XK_AudioMute, xF86XK_AudioRaiseVolume)
 import System.Environment (getEnv)
-import System.Exit
+import System.Exit (ExitCode(ExitSuccess), exitWith)
 
 import qualified Data.Map as M
 import qualified DBus.Client as DBC
 
-import Zem.StatusUpdate
-import Zem.Utils
-import Zem.VolumeControl
-import Zem.XkbSwitch
+import Zem.StatusUpdate (StatusUpdate(..), WS(..), WSType(..), postStatus, postStatusUpdate)
+import Zem.Utils (manageAndroidStudioPopups, addNetSupported)
+import Zem.VolumeControl (adjustVolumeAndNotify, toggleMuteAndNotify)
+import Zem.XkbSwitch (switchKeyboardLayout)
 
-myModm = mod4Mask
-myTerminal = "urxvt"
+workspaceNames = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
+terminalCommand = "urxvt"
 
-myWorkspaces = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
+layouts = (borderResize . smartBorders . avoidStruts $ emptyBSP) ||| noBorders Full
 
-myKeys conf dbus home =
-  [ ((myModm, xK_Return), safeSpawnProg myTerminal)
-  , ((myModm .|. shiftMask, xK_Return), windows W.swapMaster)
-  , ((myModm, xK_q), sendMessage Equalize)
-  , ((myModm .|. shiftMask, xK_q), sendMessage Balance)
-  , ((myModm, xK_f), sendMessage Rotate)
-  , ((myModm .|. shiftMask, xK_f), sendMessage Swap)
-  , ((myModm, xK_p), sendMessage FocusParent)
-  , ((myModm, xK_a), namedScratchpadAction myScratchpads "scratchterm")
-  , ((myModm, xK_s), namedScratchpadAction myScratchpads "scratchemacs")
-  , ((myModm, xK_r), myRun home)
+-- key bindings
+
+customKeys conf dbus home = let modM = modMask conf in
+  [ ((modM, xK_Return), safeSpawnProg terminalCommand)
+  , ((modM .|. shiftMask, xK_Return), windows W.swapMaster)
+  , ((modM, xK_q), sendMessage Equalize)
+  , ((modM .|. shiftMask, xK_q), sendMessage Balance)
+  , ((modM, xK_f), sendMessage Rotate)
+  , ((modM .|. shiftMask, xK_f), sendMessage Swap)
+  , ((modM, xK_p), sendMessage FocusParent)
+  , ((modM, xK_a), namedScratchpadAction scratchpadList "scratchterm")
+  , ((modM, xK_s), namedScratchpadAction scratchpadList "scratchemacs")
+  , ((modM, xK_r), safeSpawn (home ++ "/.xmonad/dmenu_run.bash") [])
   , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
-  , ((myModm, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
+  , ((modM, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
   , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
-  , ((myModm, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("make -C " ++ home ++ "/.xmonad && xmonad --restart"))
-  , ((myModm .|. shiftMask, xK_x), io (exitWith ExitSuccess))
-  , ((myModm, xK_b), withFocused toggleBorder)
-  , ((myModm, xK_l), submap . M.fromList $
+  , ((modM, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("make -C " ++ home ++ "/.xmonad && xmonad --restart"))
+  , ((modM .|. shiftMask, xK_x), io (exitWith ExitSuccess))
+  , ((modM, xK_b), withFocused toggleBorder)
+  , ((modM, xK_l), submap . M.fromList $
       [ ((0, xK_1), switchKeyboardLayout 0)
       , ((0, xK_2), switchKeyboardLayout 1)
       ])
@@ -74,21 +78,18 @@ myKeys conf dbus home =
   , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
   ]
   ++
-  [ ((m .|. myModm, k), windows $ f i)
-  | (i, k) <- zip myWorkspaces [xK_1 .. xK_9]
+  [ ((modM .|. m, k), windows $ f i)
+  | (i, k) <- zip workspaceNames [xK_1 .. xK_9]
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
   ++
-  [ ((m .|. myModm, k), f sc)
+  [ ((modM .|. m, k), f sc)
   | (sc, k) <- zip [0..] [xK_w, xK_e]
-  , (f, m) <- [(mySwitchScreen, 0), (sendToScreen, shiftMask)]
+  , (f, m) <- [(viewOrWarp, 0), (sendToScreen, shiftMask)]
   ]
 
-myRun :: String -> X ()
-myRun home = safeSpawn (home ++ "/.xmonad/dmenu_run.bash") []
-
-mySwitchScreen :: PhysicalScreen -> X ()
-mySwitchScreen p = do
+viewOrWarp :: PhysicalScreen -> X ()
+viewOrWarp p = do
   msc <- getScreen p
   whenJust msc $ \sc -> do
     ws <- gets windowset
@@ -96,33 +97,36 @@ mySwitchScreen p = do
       then viewScreen p
       else warpToScreen sc (1 % 2) (1 % 2)
 
-myNavigation2DConfig = def { layoutNavigation   = [("Full", centerNavigation)]
-                           , unmappedWindowRect = [("Full", singleWindowRect)]
-                           }
-myNavigation2D =
-  navigation2D myNavigation2DConfig
+-- Navigation2D configuration
+
+navigation2DConfig conf = let modM = modMask conf in
+  navigation2D (def { layoutNavigation   = [("Full", centerNavigation)]
+                    , unmappedWindowRect = [("Full", singleWindowRect)]
+                    })
                (xK_Up, xK_Left, xK_Down, xK_Right)
-               [(myModm, windowGo),
-                (myModm .|. shiftMask, windowSwap)]
+               [(modM, windowGo),
+                (modM .|. shiftMask, windowSwap)]
                False
 
-myLayouts = (borderResize . smartBorders . avoidStruts $ emptyBSP) ||| noBorders Full
+-- NamedScratchpad configuration
 
-myScratchpads =
-  [ NS "scratchterm" (myTerminal ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
+scratchpadList =
+  [ NS "scratchterm" (terminalCommand ++ " -name scratchterm -e screen -S scratchterm -dR") (resource =? "scratchterm") centeredFloating
   , NS "scratchemacs" "emacsclient -a '' -e '(scratch-frame)'" (resource =? "scratch-emacs") centeredFloating
   ]
   where
     centeredFloating = customFloating $ W.RationalRect 0.15 0.15 0.7 0.7
 
-myManageHook =
+-- custom window management
+
+customWindowManageHook =
   composeAll [ manageAndroidStudioPopups
              , isFullscreen --> doFullFloat
              , className =? "Putty" --> doFloat
              , className =? "net-minecraft-MinecraftLauncher" --> doFloat
              , className =? "Xfce4-notifyd" --> doFloat
              , className =? "Wine" --> doFloat
-             , namedScratchpadManageHook myScratchpads
+             , namedScratchpadManageHook scratchpadList
              ]
 
 -- main function
@@ -134,22 +138,22 @@ main = do
   -- start dzen2-update if it's not running yet
   safeSpawn (home ++ "/.xmonad/dzen2-update") []
   -- start XMonad
-  let conf = desktopConfig
-               { workspaces = myWorkspaces
-               , modMask = myModm
-               , terminal = myTerminal
-               , layoutHook = myLayouts
-               , manageHook = myManageHook <+> manageHook desktopConfig
-               , logHook = myDBusLogHook dbus >> logHook desktopConfig
-               , handleEventHook = myClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook desktopConfig
+  let conf = def
+               { workspaces = workspaceNames
+               , terminal = terminalCommand
+               , layoutHook = layouts
+               , manageHook = customWindowManageHook <+> manageHook def
+               , logHook = dbusLogHook dbus >> logHook def
+               , handleEventHook = dzenClientMessageEventHook <+> fullscreenEventHook <+> handleEventHook def
                , startupHook = setWMName "LG3D" >> addNetSupported ["_NET_WM_STATE", "_NET_WM_STATE_FULLSCREEN"]
+               , modMask = mod4Mask
                }
-  xmonad . myNavigation2D . (`additionalKeys` myKeys conf dbus home) . withUrgencyHook NoUrgencyHook . docks $ conf
+  xmonad . navigation2DConfig conf . (`additionalKeys` customKeys conf dbus home) . withUrgencyHook NoUrgencyHook . docks . ewmh $ conf
 
 -- dbus status update code
 
-myDBusLogHook :: DBC.Client -> X ()
-myDBusLogHook client = withWindowSet log >>= io . postStatusUpdate client
+dbusLogHook :: DBC.Client -> X ()
+dbusLogHook client = withWindowSet log >>= io . postStatusUpdate client
   where
     log :: WindowSet -> X StatusUpdate
     log ws = do
@@ -180,22 +184,22 @@ myDBusLogHook client = withWindowSet log >>= io . postStatusUpdate client
         screenId :: ScreenId -> Int
         screenId (S s) = toEnum s
 
--- XClientMessageEvent listener for receiving commands back
+-- XClientMessageEvent listener for receiving commands back from the dzen2 bars
 
-myClientMessageEventHook :: Event -> X All
-myClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt}) = do
+dzenClientMessageEventHook :: Event -> X All
+dzenClientMessageEventHook (ClientMessageEvent {ev_message_type = mt, ev_data = dt}) = do
   d <- asks display
   a <- io $ internAtom d "XMONAD_SWITCH" False
   when (mt == a && dt /= []) $ do
     let arg = (fromIntegral (head dt) :: Int)
         scr = arg `div` 65536
         ws = arg `mod` 65536
-    windows . greedyViewOnScreen (S scr) $ myWorkspaces !! ws
+    windows . greedyViewOnScreen (S scr) $ workspaceNames !! ws
   a <- io $ internAtom d "XMONAD_NSP_SHOW" False
   when (mt == a && dt /= []) $ do
-    let (NS name _ query _) = myScratchpads !! (fromIntegral (head dt) :: Int)
+    let (NS name _ query _) = scratchpadList !! (fromIntegral (head dt) :: Int)
     withWindowSet $ \s -> do
       current <- filterM (runQuery query) ((maybe [] W.integrate . W.stack . W.workspace . W.current) s)
-      when (null current) $ namedScratchpadAction myScratchpads name
+      when (null current) $ namedScratchpadAction scratchpadList name
   return $ All True
-myClientMessageEventHook _ = return $ All True
+dzenClientMessageEventHook _ = return $ All True
