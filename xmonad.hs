@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -lxklavier #-}
 
 import XMonad
+import XMonad.Actions.GridSelect (goToSelected)
 import XMonad.Actions.Navigation2D
   (centerNavigation, layoutNavigation, navigation2D, singleWindowRect, windowGo, windowSwap, unmappedWindowRect)
 import XMonad.Actions.NoBorders (toggleBorder)
@@ -53,36 +54,43 @@ layouts = (borderResize . smartBorders . avoidStruts $ emptyBSP) ||| noBorders F
 -- key bindings
 
 customKeys conf dbus home = let modM = modMask conf in
+  -- starting and recalling things
   [ ((modM, xK_Return), safeSpawnProg terminalCommand)
-  , ((modM .|. shiftMask, xK_Return), windows W.swapMaster)
-  , ((modM, xK_q), sendMessage Equalize)
-  , ((modM .|. shiftMask, xK_q), sendMessage Balance)
-  , ((modM, xK_f), sendMessage Rotate)
-  , ((modM .|. shiftMask, xK_f), sendMessage Swap)
-  , ((modM, xK_p), sendMessage FocusParent)
+  , ((modM, xK_r), safeSpawn (home ++ "/.xmonad/dmenu_run.bash") [])
   , ((modM, xK_a), namedScratchpadAction scratchpadList "scratchterm")
   , ((modM, xK_s), namedScratchpadAction scratchpadList "scratchemacs")
-  , ((modM, xK_r), safeSpawn (home ++ "/.xmonad/dmenu_run.bash") [])
-  , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
-  , ((modM, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
-  , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
+  , ((modM, xK_g), goToSelected def)
+  -- layout management
+  , ((modM, xK_f), sendMessage Rotate)
+  , ((modM .|. shiftMask, xK_f), sendMessage Swap)
+  , ((modM, xK_q), sendMessage Equalize)
+  , ((modM .|. shiftMask, xK_q), sendMessage Balance)
+  , ((modM, xK_p), sendMessage FocusParent)
+  , ((modM, xK_b), withFocused toggleBorder)
+  -- session management
   , ((modM, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("make -C " ++ home ++ "/.xmonad && xmonad --restart"))
   , ((modM .|. shiftMask, xK_x), io (exitWith ExitSuccess))
-  , ((modM, xK_b), withFocused toggleBorder)
+  -- keyboard layout control
   , ((modM, xK_l), submap . M.fromList $
       [ ((0, xK_1), switchKeyboardLayout 0)
       , ((0, xK_2), switchKeyboardLayout 1)
       ])
+  -- special keys (printscreen, lock, media)
+  , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
+  , ((modM, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
+  , ((0, xK_Pause), safeSpawn "xscreensaver-command" ["-lock"])
   , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
   , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
   , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
   ]
   ++
+  -- mod-1..9: workspace switching
   [ ((modM .|. m, k), windows $ f i)
   | (i, k) <- zip workspaceNames [xK_1 .. xK_9]
   , (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
   ]
   ++
+  -- mod-w..e: screen switching
   [ ((modM .|. m, k), f sc)
   | (sc, k) <- zip [0..] [xK_w, xK_e]
   , (f, m) <- [(viewOrWarp, 0), (sendToScreen, shiftMask)]
