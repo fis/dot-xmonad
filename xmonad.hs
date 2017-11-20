@@ -39,6 +39,7 @@ import System.Environment (getEnv)
 import System.Exit (ExitCode(ExitSuccess), exitWith)
 
 import qualified Data.Map as M
+import qualified DBus as DB
 import qualified DBus.Client as DBC
 
 import Zem.StatusUpdate (StatusUpdate(..), WS(..), WSType(..), postStatus, postStatusUpdate)
@@ -141,8 +142,9 @@ customWindowManageHook =
 
 main = do
   home <- getEnv "HOME"
-  -- open the DBus connection for status updates
+  -- open the DBus connection for status updates  // TODO: put name request in lib and make optional
   dbus <- DBC.connectSession
+  DBC.requestName dbus (DB.busName_ "fi.zem.XMonad") [DBC.nameAllowReplacement, DBC.nameReplaceExisting, DBC.nameDoNotQueue]
   -- start dzen2-update if it's not running yet
   safeSpawn (home ++ "/.xmonad/dzen2-update") []
   -- start XMonad

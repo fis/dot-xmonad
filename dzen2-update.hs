@@ -211,7 +211,7 @@ dbusSetupListener :: Chan Event -> IO ()
 dbusSetupListener eventChan = listenStatus handle
   where
     handle :: String -> [DB.Variant] -> IO ()
-    handle "StatusUpdate" [body] = case unpackUpdate body of
+    handle "StatusUpdate" [scr, ws, layout, title] = case unpackUpdate scr ws layout title of
       Just update -> writeChan eventChan . XMonadUpdate $ update
       Nothing -> return ()
     handle "Shutdown" _ = writeChan eventChan QuitEvent

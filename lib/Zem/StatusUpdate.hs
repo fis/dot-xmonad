@@ -13,10 +13,6 @@ import Data.Int
 import Data.Maybe
 import System.Exit
 
-import qualified Data.ByteString as B
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Encoding.Error as TEE
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
@@ -42,24 +38,22 @@ data StatusUpdate = StatusUpdate
 
 -- DBus transport
 
-packUpdate :: StatusUpdate -> DB.Variant
-packUpdate up = DB.toVariant (screen, ws, updLayout up, title)
-  where screen = toEnum (updScreen up) :: Int32
-        ws = map packWS $ updWS up
-        title = TE.encodeUtf8 . T.pack $ updTitle up
+packUpdate :: StatusUpdate -> [DB.Variant]
+packUpdate up = [screen, ws, DB.toVariant $ updLayout up, title]
+  where screen = DB.toVariant (toEnum (updScreen up) :: Int32)
+        ws = DB.toVariant . map packWS $ updWS up
+        title = DB.toVariant $ updTitle up
         packWS :: (String, WSType, Int, Bool) -> (String, Int32, Int32, Bool)
         packWS (n, t, s, u) = (n, toEnum . fromEnum $ t, toEnum s, u)
 
-unpackUpdate :: DB.Variant -> Maybe StatusUpdate
-unpackUpdate up = fmap unpack $ DB.fromVariant up
+-- TODO: handle errors in subparams
+unpackUpdate :: DB.Variant -> DB.Variant -> DB.Variant -> DB.Variant -> Maybe StatusUpdate
+unpackUpdate scr ws layout title = Just $ StatusUpdate { updScreen = fromEnum . fromJust $ (DB.fromVariant scr :: Maybe Int32)
+                                                       , updWS = map unpackWS . fromJust $ (DB.fromVariant ws :: Maybe [(String, Int32, Int32, Bool)])
+                                                       , updLayout = fromJust (DB.fromVariant layout :: Maybe String)
+                                                       , updTitle = fromJust (DB.fromVariant title :: Maybe String)
+                                                       }
   where
-    unpack :: (Int32, [(String, Int32, Int32, Bool)], String, B.ByteString) -> StatusUpdate
-    unpack (scr, ws, layout, title) =
-      StatusUpdate { updScreen = fromEnum scr
-                   , updWS = map unpackWS ws
-                   , updLayout = layout
-                   , updTitle = if B.null title then "" else T.unpack . TE.decodeUtf8With TEE.lenientDecode $ title
-                   }
     unpackWS :: (String, Int32, Int32, Bool) -> (String, WSType, Int, Bool)
     unpackWS (n, t, s, u) = (n, toEnum . fromEnum $ t, fromEnum s, u)
 
@@ -72,7 +66,7 @@ postStatus client member body = DBC.emit client sig
     memName = DB.memberName_ member
 
 postStatusUpdate :: DBC.Client -> StatusUpdate -> IO ()
-postStatusUpdate client update = postStatus client "StatusUpdate" [packUpdate update]
+postStatusUpdate client update = postStatus client "StatusUpdate" $ packUpdate update
 
 listenStatus :: (String -> [DB.Variant] -> IO ()) -> IO ()
 listenStatus handle = do
