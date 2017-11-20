@@ -145,8 +145,6 @@ main = do
   -- open the DBus connection for status updates  // TODO: put name request in lib and make optional
   dbus <- DBC.connectSession
   DBC.requestName dbus (DB.busName_ "fi.zem.XMonad") [DBC.nameAllowReplacement, DBC.nameReplaceExisting, DBC.nameDoNotQueue]
-  -- start dzen2-update if it's not running yet
-  safeSpawn (home ++ "/.xmonad/dzen2-update") []
   -- start XMonad
   let conf = def
                { workspaces = workspaceNames
