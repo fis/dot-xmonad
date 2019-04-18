@@ -33,18 +33,18 @@ import qualified XMonad.Util.ExtensibleState as XS
 doControlVolume :: (Volume -> IO b) -> Control -> IO (Maybe b)
 doControlVolume act ctrl = T.for (playback $ volume ctrl) act
 
-getControlVolume :: Control -> IO (Maybe ([Integer], Integer, Integer))
+getControlVolume :: Control -> IO (Maybe ([CLong], CLong, CLong))
 getControlVolume = doControlVolume $ \vol -> do
   (min, max) <- getRange vol
   vols <- mapM (flip getChannel $ value vol) (channels $ value vol)
   return (catMaybes vols, min, max)
 
-setControlVolume :: Integer -> Control -> IO ()
+setControlVolume :: CLong -> Control -> IO ()
 setControlVolume newVol =
   void . (doControlVolume $ \vol ->
            mapM_ (\ch -> setChannel ch (value vol) newVol) (channels $ value vol))
 
-adjustControlVolume :: Integer -> Control -> IO (Maybe (Integer, Integer, Integer))
+adjustControlVolume :: CLong -> Control -> IO (Maybe (CLong, CLong, CLong))
 adjustControlVolume offset = doControlVolume $ \vol -> do
   (vMin, vMax) <- getRange vol
   maybeVols <- mapM (flip getChannel $ value vol) (channels $ value vol)
@@ -69,16 +69,16 @@ withMasterControl f def = withMixer "default" adjustMaster
     adjustMaster mixer =
       fmap (fromMaybe def) $ getControlByName mixer "Master" >>= T.traverse f
 
-getVolumes :: IO (Maybe ([Integer], Integer, Integer))
+getVolumes :: IO (Maybe ([CLong], CLong, CLong))
 getVolumes = withMasterControl getControlVolume Nothing
 
-getVolume :: IO (Maybe (Integer, Integer, Integer))
+getVolume :: IO (Maybe (CLong, CLong, CLong))
 getVolume = fmap (fmap (\(vols, min, max) -> (sum vols `div` genericLength vols, min, max))) getVolumes
 
-setVolume :: Integer -> IO ()
+setVolume :: CLong -> IO ()
 setVolume newVol = withMasterControl (setControlVolume newVol) ()
 
-adjustVolume :: Integer -> IO (Maybe (Integer, Integer, Integer))
+adjustVolume :: CLong -> IO (Maybe (CLong, CLong, CLong))
 adjustVolume offset = withMasterControl (adjustControlVolume offset) Nothing
 
 toggleMute :: IO (Maybe Bool)
@@ -122,11 +122,11 @@ performAndNotify dbus act fmt = do
             Nothing -> return ()
     Nothing -> return ()
 
-adjustVolumeAndNotify :: DBC.Client -> Integer -> X ()
+adjustVolumeAndNotify :: DBC.Client -> CLong -> X ()
 adjustVolumeAndNotify dbus offset =
   performAndNotify dbus (adjustVolume offset) format
   where
-    format :: (Integer, Integer, Integer) -> String
+    format :: (CLong, CLong, CLong) -> String
     format (newVol, vMin, vMax) =
       "Volume: " ++ show (((newVol - vMin) * 100) `div` (vMax - vMin))
 
