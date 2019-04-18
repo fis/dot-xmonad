@@ -94,16 +94,16 @@ customKeys conf dbus home = let modM = modMask conf in
   -- mod-w..e: screen switching
   [ ((modM .|. m, k), f sc)
   | (sc, k) <- zip [0..] [xK_w, xK_e]
-  , (f, m) <- [(viewOrWarp, 0), (sendToScreen, shiftMask)]
+  , (f, m) <- [(viewOrWarp, 0), (sendToScreen def, shiftMask)]
   ]
 
 viewOrWarp :: PhysicalScreen -> X ()
 viewOrWarp p = do
-  msc <- getScreen p
+  msc <- getScreen def p
   whenJust msc $ \sc -> do
     ws <- gets windowset
     if W.screen (W.current ws) /= sc
-      then viewScreen p
+      then viewScreen def p
       else warpToScreen sc (1 % 2) (1 % 2)
 
 -- Navigation2D configuration
