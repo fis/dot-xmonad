@@ -44,7 +44,6 @@ import qualified DBus.Client as DBC
 
 import Zem.StatusUpdate (StatusUpdate(..), WS(..), WSType(..), postStatus, postStatusUpdate)
 import Zem.Utils (manageAndroidStudioPopups, addNetSupported)
-import Zem.VolumeControl (adjustVolumeAndNotify, toggleMuteAndNotify)
 import Zem.XkbSwitch (switchKeyboardLayout)
 
 workspaceNames = ["web", "mail", "irc", "c1", "c2", "x1", "x2", "x3", "x4"]
@@ -80,9 +79,6 @@ customKeys conf dbus home = let modM = modMask conf in
   , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
   , ((modM, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
   , ((0, xK_Pause), withDisplay (io . activateScreenSaver))
-  , ((0, xF86XK_AudioLowerVolume), adjustVolumeAndNotify dbus (-2))
-  , ((0, xF86XK_AudioRaiseVolume), adjustVolumeAndNotify dbus 2)
-  , ((0, xF86XK_AudioMute), toggleMuteAndNotify dbus)
   ]
   ++
   -- mod-1..9: workspace switching
