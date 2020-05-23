@@ -16,7 +16,7 @@ extra-source-files:  CHANGELOG.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Zem.Utils, Zem.XkbSwitch, Zem.StatusUpdate
+  exposed-modules:     Zem.AutoRandr, Zem.StatusUpdate, Zem.Utils, Zem.XkbSwitch
   -- other-modules:
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.12 && <5, xmonad >=0.15 && <0.17, xmonad-contrib >=0.15 && <0.17, X11 >=1.9 && <1.10, dbus >=1.2 && <1.3
