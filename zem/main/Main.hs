@@ -74,7 +74,8 @@ customKeys conf dbus home = let modM = modMask conf in
   -- special keys (printscreen, lock, media)
   , ((0, xK_Print), unGrab >> safeSpawn "scrot" ["-z", "-s", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
   , ((modM, xK_Print), unGrab >> safeSpawn "scrot" ["-z", home ++ "/img/scrot/scrot-%Y%m%d-%H%M%S.png"])
-  , ((0, xK_Pause), withDisplay (io . activateScreenSaver))
+  , ((0, xK_Pause), lock)
+  , ((modM .|. shiftMask, xK_l), lock)
   ]
   ++
   -- mod-1..9: workspace switching
@@ -88,6 +89,8 @@ customKeys conf dbus home = let modM = modMask conf in
   | (sc, k) <- zip [0..] [xK_w, xK_e]
   , (f, m) <- [(viewOrWarp, 0), (sendToScreen def, shiftMask)]
   ]
+  where
+    lock = withDisplay $ io . activateScreenSaver
 
 viewOrWarp :: PhysicalScreen -> X ()
 viewOrWarp p = do
