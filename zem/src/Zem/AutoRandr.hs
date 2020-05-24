@@ -28,7 +28,8 @@ module Zem.AutoRandr
 
 import Control.Applicative ((<|>))
 import Control.Arrow ((&&&))
-import Control.Monad (when)
+import Control.Concurrent (threadDelay)
+import Control.Monad (void, when)
 import Data.Bits (shiftL, shiftR, (.&.))
 import Data.Char (chr)
 import Data.List (elemIndex, find, partition, nub, sortOn)
@@ -75,6 +76,26 @@ import qualified XMonad.Util.ExtensibleState as XS
 -- >
 -- > -- Optionally, include a key binding to force applying the config:
 -- > myKeys = [("M-S-r", autoRandrApply myRandrConfig myRandrFallback True), ...]
+--
+-- Here's an example configuration for telling a laptop to use its internal display when no external displays are
+-- configured, or turn off the internal display when the two external monitors are connected. It will not change the
+-- configuration otherwise, leaving it for you to do manually (e.g. with @xrandr@ or @arandr@).
+--
+-- > myRandrConfig =
+-- >   [ ([int],
+-- >      ["--size", "1920x1080", "--output", "$0", "--mode", "1920x1080", "--pos", "0x0", "--primary"])
+-- >   , ([int, extL, extR],
+-- >      ["--size", "5120x1440",
+-- >       "--output", "$0", "--off",
+-- >       "--output", "$1", "--mode", "2560x1440", "--pos", "0x0",
+-- >       "--output", "$2", "--mode", "2560x1440", "--pos", "2560x0", "--primary"])
+-- >   ]
+-- >   where
+-- >     int  = output "eDP-1"
+-- >     extL = monitor "DELL U2515H"
+-- >     extR = monitor "DELL U2520D"
+-- >
+-- > myRandrFallback = []
 --
 -- Whenever the set of connected monitors change, the first configuration where the output/monitor specifications can be
 -- matched one-to-one to the new connected outputs is selected, and the corresponding arguments are passed to @xrandr@.
@@ -177,20 +198,40 @@ data Output = Output { -- | Name of the output, e.g. @DP-1@ or @HDMI-0@.
                      , outputSerial :: String
                      } deriving (Show)
 
--- | Applies the AutoRandr hooks but with a custom handler function. Note that the list of outputs includes all the
--- outputs, even disconnected ones: filter the list by 'outputConnected' if you need to.
+-- | Applies the AutoRandr hooks but with a custom handler function.
 --
--- Also note that the handler function may get called spuriously (Xrandr may report screen changes that aren't really
--- relevant), so you should probably not do anything terribly exciting unconditionally. The 'callXrandr' function might
--- help if you're planning to call the @xrandr@ binary in your handler function.
+-- Note that the list of outputs includes all the outputs, even disconnected ones: filter the list by 'outputConnected'
+-- if you need to.
+--
+-- Also note that the handler function may get called spuriously, as Xrandr may report screen changes that aren't really
+-- relevant. There's some automatic debouncing (action is delayed by half a second, and new notifications during the
+-- delay time are suppressed), but you should probably still not do anything terribly expensive unconditionally. The
+-- 'callXrandr' function might help if you're planning to call the @xrandr@ binary in your handler function.
 autoRandr' :: ([Output] -> X ()) -> XConfig a -> XConfig a
 autoRandr' f c = c { startupHook = xrandrStartupHook <+> startupHook c
                    , handleEventHook = autoRandrEventHook' f <+> handleEventHook c }
 
 -- | Event hook for applying the given custom handler whenever Xrandr screen changes are reported. See 'autoRandr'' for
--- notes on the handler. No screen change events are detected unless you also call 'xrandrStartupHook' beforehand.
+-- notes on the handler. No screen change events are detected unless you also call 'xrandrStartupHook' beforehand. This
+-- hook also handles delaying the reaction by a bit, and suppressing new change events that happen during the delay, to
+-- avoid triggering the action more often than necessary.
 autoRandrEventHook' :: ([Output] -> X ()) -> Event -> X All
-autoRandrEventHook' f = xrandrScreenChangeEventHook $ autoRandrApply' f >> return (All True)
+autoRandrEventHook' _ (RRScreenChangeNotifyEvent {}) = do
+  debouncingCheck . xfork $ do
+    dpy <- openDisplay ""
+    threadDelay 500000
+    a <- internAtom dpy "XMONAD_AUTORANDR_TRIGGER" False
+    allocaXEvent $ \e -> do
+      setEventType e clientMessage
+      let rw = defaultRootWindow dpy
+      setClientMessageEvent e rw a 32 0 currentTime
+      sendEvent dpy rw False structureNotifyMask e
+  return $ All True
+autoRandrEventHook' f (ClientMessageEvent {ev_message_type = mt}) = do
+  a <- getAtom "XMONAD_AUTORANDR_TRIGGER"
+  when (mt == a) $ debouncingClear >> autoRandrApply' f
+  return $ All True
+autoRandrEventHook' _ _ = return $ All True
 
 -- | Applies the custom handler to the current set of connected Xrandr outputs.
 autoRandrApply' :: ([Output] -> X ()) -> X ()
@@ -295,7 +336,7 @@ matchOutputs [] _ = Nothing
 -- previous call to this function.
 callXrandr :: Bool -> [String] -> X ()
 callXrandr force args = do
-  modified <- stateModified args
+  modified <- xrandrArgsModified args
   when (modified || force) $ safeSpawn "xrandr" args
 -- TODO: think about adding a delay for debouncing...
 
@@ -404,11 +445,26 @@ formatEDID bytes = (head $ monitorNames ++ [serialName], serialName)
     slice :: [Word32] -> (Int, Int) -> [Word32]
     slice xs (from, to) = take (to-from) . drop from $ xs
 
+-- State for storing the de-bouncing timer state flag.
+
+data DebouncingFlag = DebouncingIdle | DebouncingActive deriving (Eq, Typeable)
+
+instance ExtensionClass DebouncingFlag where
+  initialValue = DebouncingIdle
+
+debouncingCheck :: X a -> X ()
+debouncingCheck f = XS.modified (const DebouncingActive) >>= (`when` void f) >> return ()
+
+debouncingClear :: X ()
+debouncingClear = XS.put DebouncingIdle
+
+-- Persistent state for storing the last xrandr command arguments.
+
 data LastCallArgs = LastCallArgs [String] deriving (Eq, Show, Read, Typeable)
 
 instance ExtensionClass LastCallArgs where
   initialValue = LastCallArgs []
   extensionType = PersistentExtension
 
-stateModified :: [String] -> X Bool
-stateModified = XS.modified . const . LastCallArgs
+xrandrArgsModified :: [String] -> X Bool
+xrandrArgsModified = XS.modified . const . LastCallArgs
