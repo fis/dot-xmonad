@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -lxklavier #-}
-
 import XMonad
 import XMonad.Actions.GridSelect (goToSelected)
 import XMonad.Actions.Navigation2D
@@ -17,7 +15,6 @@ import XMonad.Hooks.SetWMName (setWMName)
 import XMonad.Layout.BinarySpacePartition (FocusParent(..), TreeBalance(..), Rotate(..), Swap(..), emptyBSP)
 import XMonad.Layout.BorderResize (borderResize)
 import XMonad.Layout.NoBorders (noBorders, smartBorders)
-import XMonad.Layout.PerScreen (ifWider)
 import XMonad.Util.EZConfig (additionalKeys)
 import XMonad.Util.NamedScratchpad
   (NamedScratchpad(NS), customFloating, namedScratchpadAction, namedScratchpadFilterOutWorkspace, namedScratchpadManageHook)
@@ -34,7 +31,6 @@ import Data.List (sortBy)
 import Data.Maybe (isNothing)
 import Data.Monoid (All(..))
 import Data.Ratio ((%))
-import Graphics.X11.ExtraTypes.XF86 (xF86XK_AudioLowerVolume, xF86XK_AudioMute, xF86XK_AudioRaiseVolume)
 import System.Environment (getEnv)
 import System.Exit (ExitCode(ExitSuccess), exitWith)
 
@@ -42,7 +38,7 @@ import qualified Data.Map as M
 import qualified DBus as DB
 import qualified DBus.Client as DBC
 
-import Zem.StatusUpdate (StatusUpdate(..), WS(..), WSType(..), postStatus, postStatusUpdate)
+import Zem.StatusUpdate (StatusUpdate(..), WSType(..), postStatus, postStatusUpdate)
 import Zem.Utils (manageAndroidStudioPopups, addNetSupported)
 import Zem.XkbSwitch (switchKeyboardLayout)
 
@@ -140,7 +136,7 @@ main = do
   home <- getEnv "HOME"
   -- open the DBus connection for status updates  // TODO: put name request in lib and make optional
   dbus <- DBC.connectSession
-  DBC.requestName dbus (DB.busName_ "fi.zem.XMonad") [DBC.nameAllowReplacement, DBC.nameReplaceExisting, DBC.nameDoNotQueue]
+  _ <- DBC.requestName dbus (DB.busName_ "fi.zem.XMonad") [DBC.nameAllowReplacement, DBC.nameReplaceExisting, DBC.nameDoNotQueue]
   -- start XMonad
   let conf = def
                { workspaces = workspaceNames
