@@ -235,19 +235,13 @@ autoRandrEventHook' _ _ = return $ All True
 
 -- | Applies the custom handler to the current set of connected Xrandr outputs.
 autoRandrApply' :: ([Output] -> X ()) -> X ()
-autoRandrApply' f = do
-  dpy <- asks display
-  root <- asks theRoot
-  f =<< (io $ queryOutputs dpy root)
+autoRandrApply' = (wrapIO queryOutputs >>=)
 
 -- | Startup hook that requests Xrandr screen change notifications to be delivered to Xmonad. If this (or something
 -- equivalent) is not called in the startup, the event hooks will not work either. Normally the 'autoRandr' (or
 -- 'autoRandr'') function inserts this into your configuration's startup hooks.
 xrandrStartupHook :: X ()
-xrandrStartupHook = do
-  dpy <- asks display
-  root <- asks theRoot
-  io $ xrrSelectInput dpy root rrScreenChangeNotifyMask
+xrandrStartupHook = wrapIO $ \dpy root -> xrrSelectInput dpy root rrScreenChangeNotifyMask
 
 -- | Converts the given action to an event hook that reacts to Xrandr screen change notification events only. This is
 -- the low-level interface that does no automatic querying of Xrandr outputs for you. You still also need the
@@ -370,14 +364,16 @@ showCurrentOutputs = do
 queryOutputs :: Display -> Window -> IO [Output]
 queryOutputs dpy root = xrrGetScreenResources dpy root >>= describeOutputs dpy
 
+-- Parses the Xrandr screen resources and describes all the outputs in it.
 describeOutputs :: Display -> Maybe XRRScreenResources -> IO [Output]
 describeOutputs dpy (Just (res@XRRScreenResources {xrr_sr_outputs = outputs})) =
   mapM (describeOutput dpy res) outputs >>= return . catMaybes
 describeOutputs _ _ = return []
 
+-- Queries Xrandr for the details of a single output, and formats it into an Output.
 describeOutput :: Display -> XRRScreenResources -> RROutput -> IO (Maybe Output)
 describeOutput dpy res out = do
-  info <- fmap (describeOutputInfo res) $ xrrGetOutputInfo dpy res out
+  info <- describeOutputInfo res <$> xrrGetOutputInfo dpy res out
   edid <- io (readEDID dpy out)
   return $ merge info edid
   where
@@ -392,6 +388,7 @@ describeOutput dpy res out = do
                    })
     merge _ _ = Nothing
 
+-- Decompoes a XRROutputInfo into (name, connected-flag, [sizes]) structure.
 describeOutputInfo :: XRRScreenResources -> Maybe XRROutputInfo -> Maybe (String, Bool, [(Int, Int)])
 describeOutputInfo res (Just out)
   | XRRScreenResources {xrr_sr_modes = allModes} <- res
@@ -399,22 +396,25 @@ describeOutputInfo res (Just out)
   = Just (name, conn == 0, mapMaybe (lookupSize allModes) $ modes)
   where
     lookupSize :: [XRRModeInfo] -> RRMode -> Maybe (Int, Int)
-    lookupSize modes mode = fmap getSize $ find (\(XRRModeInfo {xrr_mi_id = i}) -> i == mode) modes
+    lookupSize modes mode = getSize <$> find (\(XRRModeInfo {xrr_mi_id = i}) -> i == mode) modes
     getSize :: XRRModeInfo -> (Int, Int)
     getSize (XRRModeInfo {xrr_mi_width = w, xrr_mi_height = h}) = (fromIntegral w, fromIntegral h)
 describeOutputInfo _ _ = Nothing
 
+-- Reads the monitor name and serial number from the Xrandr EDID property.
 readEDID :: Display -> RROutput -> IO (String, String)
 readEDID dpy out = do
   aEDID <- internAtom dpy "EDID" False
-  fmap parseEDID $ xrrGetOutputProperty dpy out aEDID 0 256 False False anyPropertyType
+  parseEDID <$> xrrGetOutputProperty dpy out aEDID 0 256 False False anyPropertyType
 
+-- Parses the EDID property into (name, serial).
 parseEDID :: Maybe (Atom, Int, CULong, [Word32]) -> (String, String)
 parseEDID (Just (_, 8, _, bytes))
   | length bytes >= 128 = formatEDID bytes
   | otherwise = let err = "TRUNCATED:" ++ (show $ length bytes) in (err, err)
 parseEDID _ = ("UNAVAILABLE", "UNAVAILABLE")
 
+-- Parses the EDID binary blob into (name, serial).
 formatEDID :: [Word32] -> (String, String)
 formatEDID bytes = (head $ monitorNames ++ [serialName], serialName)
   where
@@ -444,6 +444,13 @@ formatEDID bytes = (head $ monitorNames ++ [serialName], serialName)
     le = foldr (\b n -> (n `shiftL` 8) .|. b) 0
     slice :: [Word32] -> (Int, Int) -> [Word32]
     slice xs (from, to) = take (to-from) . drop from $ xs
+
+-- Lifts an IO to X and automatically provides it the display and root.
+wrapIO :: (Display -> Window -> IO a) -> X a
+wrapIO f = do
+  dpy <- asks display
+  root <- asks theRoot
+  io $ f dpy root
 
 -- State for storing the de-bouncing timer state flag.
 
