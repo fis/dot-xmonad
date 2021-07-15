@@ -68,7 +68,7 @@ customKeys conf dbus home = let modM = modMask conf in
   , ((modM, xK_p), sendMessage FocusParent)
   , ((modM, xK_b), withFocused toggleBorder)
   -- session management
-  , ((modM, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("xmonad --rebuild && xmonad --restart"))
+  , ((modM, xK_x), (io $ postStatus dbus "Shutdown" []) >> unsafeSpawn ("xmonad --recompile && xmonad --restart"))
   , ((modM .|. shiftMask, xK_x), io (exitWith ExitSuccess))
   -- keyboard layout control
   , ((modM, xK_l), submap . M.fromList $
